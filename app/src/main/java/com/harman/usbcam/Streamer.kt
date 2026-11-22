@@ -10,6 +10,9 @@ import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CaptureRequest
 import android.hardware.camera2.CaptureResult
 import android.hardware.camera2.TotalCaptureResult
+import android.graphics.PointF
+import android.graphics.Rect
+import android.hardware.camera2.params.MeteringRectangle
 import android.hardware.camera2.params.OutputConfiguration
 import android.hardware.camera2.params.SessionConfiguration
 import android.media.MediaCodec
@@ -73,6 +76,15 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
     private val pool = ArrayBlockingQueue<Pkt>(POOL).also { for (i in 0 until POOL) it.add(Pkt(ByteArray(HDR + 262_144))) }
     @Volatile var encFpsNow = 0f; @Volatile var encMbpsNow = 0f; @Volatile var clientConnected = false
     @Volatile var cfgNow: Config? = null
+    @Volatile var preview: Surface? = null          // on-screen preview (CameraActivity); camera gets it as a second output
+    var ctl: CamControls? = null
+    @Volatile var activeId = ""
+    private var camHandler: Handler? = null
+    private var camChars: CameraCharacteristics? = null
+    private var encSurf: Surface? = null
+    private var camPhys: String? = null
+    private var curOuts: List<Surface> = emptyList()
+    private var sessGen = 0
     val infoText: String get() = info
     val dropCount: Int get() = drops
     private val threads = mutableListOf<Thread>()
@@ -91,6 +103,7 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
         val mgr = ctx.getSystemService(Context.CAMERA_SERVICE) as CameraManager
         val target = resolve(mgr, cfg)
         val note = snap(mgr, target, cfg) + pickFps(mgr, target.first, cfg)
+        activeId = target.second ?: target.first
         info = "cam ${target.second ?: target.first} ${cfg.w}x${cfg.h}@${cfg.fps}$note"
         log("START $info bitrate=${cfg.bitrate} requestedCam=${cfg.cam} logicalId=${target.first} physicalId=${target.second} aeRange=$aeRange zoom=${cfg.zoom}")
 
@@ -152,7 +165,7 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
         threads.clear()
         try { codec?.stop(); codec?.release() } catch (_: Exception) {}
         camThread?.quitSafely()
-        codec = null; camera = null; session = null; camThread = null; server = null
+        codec = null; camera = null; session = null; camThread = null; server = null; camHandler = null; encSurf = null
     }
 
     private fun spawn(name: String, r: () -> Unit) {
@@ -348,58 +361,128 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
         } catch (_: Exception) {}
     }
 
+    /** Called from the UI when the preview surface appears (non-null) or goes away (null). Re-creates only the camera session; the encoder keeps running. */
+    fun setPreview(sf: Surface?) {
+        preview = sf
+        camHandler?.post { if (running && camera != null) startSession() }
+    }
+
+    /** Re-reads the manual controls and pushes them to the running camera. */
+    fun applyControls() {
+        camHandler?.post { if (running) pushRequest() }
+    }
+
+    private var builderCfg: Config? = null
+
     private fun openCamera(mgr: CameraManager, target: Pair<String, String?>, cfg: Config, surface: Surface) {
         val (id, phys) = target
         val chars: CameraCharacteristics? = try { mgr.getCameraCharacteristics(id) } catch (_: Exception) { null }
         val t = HandlerThread("cam").also { it.start() }
         camThread = t
         val h = Handler(t.looper)
-
+        camHandler = h; camChars = chars; encSurf = surface; camPhys = phys; builderCfg = cfg
+        ctl?.load(chars, cfg.fps)
         mgr.openCamera(id, object : CameraDevice.StateCallback() {
-            override fun onOpened(cam: CameraDevice) {
-                camera = cam
-                val cb = object : CameraCaptureSession.StateCallback() {
-                    override fun onConfigured(s: CameraCaptureSession) {
-                        session = s
-                        val req = cam.createCaptureRequest(if (cfg.tpl > 0) cfg.tpl else CameraDevice.TEMPLATE_RECORD).apply {
-                            addTarget(surface)
-                            set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, aeRange ?: Range(cfg.fps, cfg.fps))
-                            if (cfg.nostab) set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF)
-                            if (cfg.zoom > 0f && Build.VERSION.SDK_INT >= 30) set(CaptureRequest.CONTROL_ZOOM_RATIO, cfg.zoom)
-                            set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO)
-                            if (cfg.ll >= 1) fastIsp(this, chars)  // less ISP work per frame, only modes the camera lists
-                        }.build()
-                        s.setRepeatingRequest(req, object : CameraCaptureSession.CaptureCallback() {
-                            override fun onCaptureCompleted(sess: CameraCaptureSession, r: CaptureRequest, res: TotalCaptureResult) {
-                                camFrames++
-                                val now = System.nanoTime()
-                                if (now - camT > 2_000_000_000L) {
-                                    val sec = (now - camT) / 1e9
-                                    val ph = if (Build.VERSION.SDK_INT >= 28) res.get(CaptureResult.LOGICAL_MULTI_CAMERA_ACTIVE_PHYSICAL_ID) else null
-                                    val zoom = if (Build.VERSION.SDK_INT >= 30) res.get(CaptureResult.CONTROL_ZOOM_RATIO) else null
-                                    val pr = if (Build.VERSION.SDK_INT >= 28) res.physicalCameraResults.entries
-                                        .joinToString(" ") { "${it.key}:${it.value.get(CaptureResult.LENS_FOCAL_LENGTH)}mm" }.ifEmpty { "none" } else "n/a"
-                                    log("cam fps=${"%.1f".format(camFrames / sec)} activePhysical=$ph focalLength=${res.get(CaptureResult.LENS_FOCAL_LENGTH)}mm zoom=$zoom physResults=$pr crop=${res.get(CaptureResult.SCALER_CROP_REGION)} stab=${res.get(CaptureResult.CONTROL_VIDEO_STABILIZATION_MODE)} ois=${res.get(CaptureResult.LENS_OPTICAL_STABILIZATION_MODE)}")
-                                    camFrames = 0; camT = now
-                                }
-                            }
-                        }, h)
-                    }
-                    override fun onConfigureFailed(s: CameraCaptureSession) {
-                        onStatus("Camera session failed: $info unsupported on this camera")
-                    }
-                }
-                if (phys != null && Build.VERSION.SDK_INT >= 28) {
-                    val oc = OutputConfiguration(surface).apply { setPhysicalCameraId(phys) }
-                    val sc = SessionConfiguration(SessionConfiguration.SESSION_REGULAR, listOf(oc), { r -> h.post(r) }, cb)
-                    cam.createCaptureSession(sc)
-                } else {
-                    @Suppress("DEPRECATION")
-                    cam.createCaptureSession(listOf(surface), cb, h)
-                }
-            }
+            override fun onOpened(cam: CameraDevice) { camera = cam; startSession() }
             override fun onDisconnected(cam: CameraDevice) { cam.close() }
             override fun onError(cam: CameraDevice, error: Int) { cam.close(); onStatus("Camera error $error") }
         }, h)
+    }
+
+    /** Runs on the camera thread. (Re)creates the capture session: encoder surface, plus the preview surface when there is one. */
+    private fun startSession() {
+        val cam = camera ?: return
+        val h = camHandler ?: return
+        val enc = encSurf ?: return
+        val pv = preview?.takeIf { it.isValid }
+        val outs = if (pv != null) listOf(enc, pv) else listOf(enc)
+        val gen = ++sessGen
+        val cb = object : CameraCaptureSession.StateCallback() {
+            override fun onConfigured(s: CameraCaptureSession) {
+                if (gen != sessGen || !running) { try { s.close() } catch (_: Exception) {}; return }
+                session = s; curOuts = outs
+                pushRequest()
+                codec?.let { requestKey(it) }   // the PC decoder resyncs after the short pause
+            }
+            override fun onConfigureFailed(s: CameraCaptureSession) {
+                if (gen != sessGen) return
+                if (pv != null) { log("session with preview failed, continuing without preview"); preview = null; startSession() }
+                else onStatus("Camera session failed: $info unsupported on this camera")
+            }
+        }
+        try {
+            if (camPhys != null && Build.VERSION.SDK_INT >= 28) {
+                val ocs = outs.map { OutputConfiguration(it).apply { setPhysicalCameraId(camPhys) } }
+                cam.createCaptureSession(SessionConfiguration(SessionConfiguration.SESSION_REGULAR, ocs, { r -> h.post(r) }, cb))
+            } else {
+                @Suppress("DEPRECATION")
+                cam.createCaptureSession(outs, cb, h)
+            }
+        } catch (e: Exception) { log("createCaptureSession: ${e.message}") }
+    }
+
+    private fun pushRequest() {
+        val cam = camera ?: return; val s = session ?: return; val cfg = builderCfg ?: return
+        try {
+            val b = cam.createCaptureRequest(if (cfg.tpl > 0) cfg.tpl else CameraDevice.TEMPLATE_RECORD).apply {
+                for (o in curOuts) addTarget(o)
+                set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, aeRange ?: Range(cfg.fps, cfg.fps))
+                if (cfg.nostab) set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF)
+                if (cfg.zoom > 0f && Build.VERSION.SDK_INT >= 30) set(CaptureRequest.CONTROL_ZOOM_RATIO, cfg.zoom)
+                set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO)
+                if (cfg.ll >= 1) fastIsp(this, camChars)  // less ISP work per frame, only modes the camera lists
+                ctl?.let { applyCtl(this, it, cfg.fps) }
+            }.build()
+            s.setRepeatingRequest(b, captureCb, camHandler)
+        } catch (e: Exception) { log("setRepeatingRequest: ${e.message}") }
+    }
+
+    private fun applyCtl(b: CaptureRequest.Builder, c: CamControls, fps: Int) {
+        try {
+            if (c.manualExp && c.manualOk) {
+                b.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
+                b.set(CaptureRequest.SENSOR_SENSITIVITY, c.iso)
+                b.set(CaptureRequest.SENSOR_EXPOSURE_TIME, c.expNs)
+                b.set(CaptureRequest.SENSOR_FRAME_DURATION, Math.max(1_000_000_000L / fps, c.expNs))
+            } else {
+                b.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+                b.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, c.ev)
+                if (c.aeLock && c.aeLockOk) b.set(CaptureRequest.CONTROL_AE_LOCK, true)
+            }
+            if ((c.manualFocus || c.afLock) && c.minFocus > 0f) {
+                b.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF)
+                b.set(CaptureRequest.LENS_FOCUS_DISTANCE, c.focusDist.coerceIn(0f, c.minFocus))
+            }
+            if (c.awbLock) b.set(CaptureRequest.CONTROL_AWB_LOCK, true)
+            c.point?.let { p -> region(p, c)?.let { r -> b.set(CaptureRequest.CONTROL_AF_REGIONS, r); b.set(CaptureRequest.CONTROL_AE_REGIONS, r) } }
+        } catch (e: Exception) { log("applyCtl: ${e.message}") }
+    }
+
+    private fun region(p: PointF, c: CamControls): Array<MeteringRectangle>? {
+        val base = c.crop ?: c.activeArray ?: return null
+        val sz = base.width() / 8
+        val cx = base.left + (p.x * base.width()).toInt(); val cy = base.top + (p.y * base.height()).toInt()
+        val r = Rect(cx - sz / 2, cy - sz / 2, cx + sz / 2, cy + sz / 2)
+        if (!r.intersect(base)) return null
+        return arrayOf(MeteringRectangle(r, 1000))
+    }
+
+    private val captureCb = object : CameraCaptureSession.CaptureCallback() {
+        override fun onCaptureCompleted(sess: CameraCaptureSession, r: CaptureRequest, res: TotalCaptureResult) {
+            camFrames++
+            ctl?.let { c ->
+                res.get(CaptureResult.SENSOR_SENSITIVITY)?.let { c.liveIso = it }
+                res.get(CaptureResult.SENSOR_EXPOSURE_TIME)?.let { c.liveExpNs = it }
+                res.get(CaptureResult.LENS_FOCUS_DISTANCE)?.let { c.liveFocus = it }
+                c.crop = res.get(CaptureResult.SCALER_CROP_REGION)
+            }
+            val now = System.nanoTime()
+            if (now - camT > 2_000_000_000L) {
+                val sec = (now - camT) / 1e9
+                val ph = if (Build.VERSION.SDK_INT >= 28) res.get(CaptureResult.LOGICAL_MULTI_CAMERA_ACTIVE_PHYSICAL_ID) else null
+                log("cam fps=${"%.1f".format(camFrames / sec)} activePhysical=$ph focalLength=${res.get(CaptureResult.LENS_FOCAL_LENGTH)}mm iso=${res.get(CaptureResult.SENSOR_SENSITIVITY)} exp=${res.get(CaptureResult.SENSOR_EXPOSURE_TIME)} preview=${curOuts.size > 1}")
+                camFrames = 0; camT = now
+            }
+        }
     }
 }

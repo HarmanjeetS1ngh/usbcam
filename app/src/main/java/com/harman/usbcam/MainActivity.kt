@@ -224,6 +224,9 @@ class MainActivity : Activity() {
         col.addView(header)
         col.addView(LinearLayout(this).apply { setPadding(0, dp(14), 0, 0) })
         col.addView(card(top, statusTv, guardTv))
+        col.addView(btn("Open camera preview and controls", ACC, Color.WHITE).apply {
+            setOnClickListener { startActivity(Intent(this@MainActivity, CameraActivity::class.java)) } },
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) })
 
         // quality presets
         col.addView(section("Quality"))

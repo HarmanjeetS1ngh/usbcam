@@ -33,6 +33,8 @@ class UsbCamService : Service() {
         const val VERSION = "0.5-m5"
         const val ACTION_START = "com.harman.usbcam.START"
         const val ACTION_QUIT = "com.harman.usbcam.QUIT"
+        const val ACTION_PREVIEW = "com.harman.usbcam.PREVIEW"   // start a default stream if idle (preview screen)
+        @Volatile var instance: UsbCamService? = null
         const val ACTION_APPLY = "com.harman.usbcam.APPLY"   // restart the running stream with the saved phone choice
         // thermal / battery guard thresholds (battery temperature in deg C)
         private const val T_REDUCE = 42f; private const val T_STOP = 46f; private const val T_RECOVER = 39f; private const val T_RESUME = 40f
@@ -46,6 +48,27 @@ class UsbCamService : Service() {
     }
 
     private val lock = Any()
+    val controls = CamControls()
+    private var previewSurface: android.view.Surface? = null
+
+    fun setPreview(sf: android.view.Surface?) { previewSurface = sf; synchronized(lock) { streamer?.setPreview(sf) } }
+    fun applyControls() { streamer?.applyControls() }
+    fun clientOn(): Boolean = streamer?.clientConnected == true
+    fun infoNow(): String = streamer?.infoText ?: ""
+    /** Switch between the back and front camera (keeps the saved size; the streamer snaps it if the other camera lacks it). */
+    fun flipCamera() = synchronized(lock) {
+        val s = streamer ?: return@synchronized
+        val cfg = s.cfgNow ?: return@synchronized
+        val mgr = getSystemService(Context.CAMERA_SERVICE) as android.hardware.camera2.CameraManager
+        fun facing(id: String) = try { mgr.getCameraCharacteristics(id).get(android.hardware.camera2.CameraCharacteristics.LENS_FACING) } catch (_: Exception) { null }
+        val curF = facing(s.activeId)
+        val other = mgr.cameraIdList.firstOrNull { facing(it) != curF && facing(it) != null } ?: return@synchronized
+        val p = Prefs(this)
+        if (!p.hasChoice) { p.w = cfg.w; p.h = cfg.h; p.fps = cfg.fps }
+        p.cam = other
+        controls.reset()
+        applySaved()
+    }
     private var streamer: Streamer? = null
     private var control: ControlServer? = null
     private var wake: PowerManager.WakeLock? = null
@@ -59,6 +82,7 @@ class UsbCamService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_QUIT) { shutdown(); return START_NOT_STICKY }
+        instance = this
         goForeground()
         ui.removeCallbacks(guardTick); ui.post(guardTick)
         if (intent?.action == ACTION_APPLY) { synchronized(lock) { applySaved() }; return START_NOT_STICKY }
@@ -67,6 +91,7 @@ class UsbCamService : Service() {
             control = ControlServer(CONTROL_PORT) { handle(it) }.also { it.start() }
             if (streamer == null) setStatus("Idle | control on port $CONTROL_PORT")
         }
+        if (intent?.action == ACTION_PREVIEW) { synchronized(lock) { if (streamer == null) handle(JSONObject().put("cmd", "start").put("hdr", true)) }; return START_NOT_STICKY }
         if (intent != null && listOf("w", "h", "fps", "br", "cam").any { intent.hasExtra(it) }) {
             val d = baseDefault()
             val w = intent.getIntExtra("w", d.getInt("w")); val h = intent.getIntExtra("h", d.getInt("h"))
@@ -124,6 +149,7 @@ class UsbCamService : Service() {
             baseBr = cfg.bitrate; guardStage = 0
             val s = Streamer(this) { setStatus(it) }
             streamer = s
+            s.ctl = controls; s.preview = previewSurface
             s.start(cfg)
             val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
             wake = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "usbcam:stream").apply {
@@ -152,6 +178,7 @@ class UsbCamService : Service() {
     }
 
     override fun onDestroy() {
+        if (instance === this) instance = null
         ui.removeCallbacks(guardTick)
         synchronized(lock) { stopStream() }
         control?.stop(); control = null
