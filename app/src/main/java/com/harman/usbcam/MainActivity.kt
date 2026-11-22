@@ -56,6 +56,7 @@ class MainActivity : Activity() {
 
     private fun begin() {
         streamer?.stop()
+        Log.i("UsbCam", "device ${Build.MANUFACTURER} ${Build.MODEL} sdk=${Build.VERSION.SDK_INT}\ncameras:\n$cams\nencoders:\n$caps")
         val i = intent
         val cfg = Streamer.Config(
             w = i.getIntExtra("w", 1920),
@@ -64,15 +65,16 @@ class MainActivity : Activity() {
             bitrate = i.getIntExtra("br", 12_000_000),
             port = i.getIntExtra("port", 5000),
             facing = i.getIntExtra("facing", 1), // 1 = back, 0 = front
-            cam = i.getStringExtra("cam")
+            cam = i.getStringExtra("cam"),
+            zoom = i.getFloatExtra("zoom", 0f)
         )
         val s = Streamer(this) { msg -> runOnUiThread { status(msg) } }
         streamer = s
         try { s.start(cfg) } catch (e: Exception) { status("Start failed: ${e.message}") }
     }
 
-    private fun status(msg: String) { last = msg; render() }
-    private fun render() { tv.text = "UsbCam M1\n$last\n\nCameras (use: --es cam <id>):\n$cams\nEncoders:\n$caps" }
+    private fun status(msg: String) { last = msg; Log.i("UsbCam", msg); render() }
+    private fun render() { tv.text = "UsbCam m1g\n$last\n\nCameras (use: --es cam <id>):\n$cams\nEncoders:\n$caps" }
 
     override fun onDestroy() {
         streamer?.stop()
@@ -88,7 +90,9 @@ class MainActivity : Activity() {
             ?.sortedByDescending { it.width }?.take(4)?.joinToString(",") { "${it.width}x${it.height}" } ?: ""
         val fps = c.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
             ?.map { it.upper }?.distinct()?.sorted()?.joinToString(",") ?: "?"
-        return "$indent$label ($face) f=${fl}mm max ${best?.width}x${best?.height} 16:9[$wide] fps[$fps]\n"
+        val hs = c.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)?.highSpeedVideoFpsRanges
+            ?.map { it.upper }?.distinct()?.sorted()?.joinToString(",").orEmpty()
+        return "$indent$label ($face) f=${fl}mm max ${best?.width}x${best?.height} 16:9[$wide] fps[$fps] hs[$hs]\n"
     }
 
     private fun camsText(): String {
