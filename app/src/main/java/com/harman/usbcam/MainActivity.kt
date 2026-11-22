@@ -58,6 +58,8 @@ class MainActivity : Activity() {
     private lateinit var spBr: Spinner
     private lateinit var cbLl: Switch
     private lateinit var cbGuard: Switch
+    private lateinit var swCam: Switch
+    private var syncing = false
 
     private val ui = Handler(Looper.getMainLooper())
     private val tick = object : Runnable { override fun run() { refreshStatus(); ui.postDelayed(this, 1000) } }
@@ -223,7 +225,11 @@ class MainActivity : Activity() {
         hintTv = tv("", 12f, WARN).apply { setPadding(0, dp(4), 0, 0) }
         col.addView(header)
         col.addView(LinearLayout(this).apply { setPadding(0, dp(14), 0, 0) })
-        col.addView(card(top, statusTv, guardTv))
+        swCam = Switch(this).apply { isChecked = UsbCamService.camEnabled
+            setOnCheckedChangeListener { _, on ->
+                if (!syncing) startForegroundService(Intent(this@MainActivity, UsbCamService::class.java)
+                    .setAction(if (on) UsbCamService.ACTION_CAM_ON else UsbCamService.ACTION_CAM_OFF)) } }
+        col.addView(card(top, statusTv, guardTv, switchRow("Camera", "Turn off to stop streaming and free the camera for other apps", swCam)))
         col.addView(btn("Open camera preview and controls", ACC, Color.WHITE).apply {
             setOnClickListener { startActivity(Intent(this@MainActivity, CameraActivity::class.java)) } },
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) })
@@ -355,8 +361,10 @@ class MainActivity : Activity() {
             low.contains("wait") || low.contains("listen") || low.contains("ready") -> "Ready, waiting for the PC" to ACC
             else -> "Starting..." to SUB
         }
-        titleTv.text = title
-        (dot.background as GradientDrawable).setColor(color)
+        val off = !s.camEnabled
+        if (swCam.isChecked != s.camEnabled) { syncing = true; swCam.isChecked = s.camEnabled; syncing = false }
+        titleTv.text = if (off) "Camera off" else title
+        (dot.background as GradientDrawable).setColor(if (off) SUB else color)
         statusTv.text = raw
         val batt = if (s.battLevel >= 0) "${s.battLevel}%${if (s.plugged) " (charging)" else ""}" else "?"
         guardTv.text = "Battery $batt   \u00B7   ${"%.1f".format(s.battTemp)} \u00B0C" +

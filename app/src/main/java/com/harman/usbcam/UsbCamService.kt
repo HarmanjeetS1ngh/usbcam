@@ -35,6 +35,9 @@ class UsbCamService : Service() {
         const val ACTION_QUIT = "com.harman.usbcam.QUIT"
         const val ACTION_PREVIEW = "com.harman.usbcam.PREVIEW"   // start a default stream if idle (preview screen)
         @Volatile var instance: UsbCamService? = null
+        @Volatile var camEnabled = true   // master on/off from the phone: when false, the camera stays off and remote start requests are refused
+        const val ACTION_CAM_ON = "com.harman.usbcam.CAM_ON"
+        const val ACTION_CAM_OFF = "com.harman.usbcam.CAM_OFF"
         const val ACTION_APPLY = "com.harman.usbcam.APPLY"   // restart the running stream with the saved phone choice
         // thermal / battery guard thresholds (battery temperature in deg C)
         private const val T_REDUCE = 42f; private const val T_STOP = 46f; private const val T_RECOVER = 39f; private const val T_RESUME = 40f
@@ -86,13 +89,20 @@ class UsbCamService : Service() {
         instance = this
         goForeground()
         ui.removeCallbacks(guardTick); ui.post(guardTick)
+        if (intent?.action == ACTION_CAM_OFF) {
+            camEnabled = false
+            synchronized(lock) { stopStream() }
+            setStatus("Camera off (switched off on the phone)")
+            return START_NOT_STICKY
+        }
+        if (intent?.action == ACTION_CAM_ON) camEnabled = true
         if (intent?.action == ACTION_APPLY) { synchronized(lock) { applySaved() }; return START_NOT_STICKY }
         if (control == null) {
             Log.i("UsbCam", "UsbCam $VERSION\n" + Caps.text(caps))
             control = ControlServer(CONTROL_PORT) { handle(it) }.also { it.start() }
             if (streamer == null) setStatus("Idle | control on port $CONTROL_PORT")
         }
-        if (intent?.action == ACTION_PREVIEW) { synchronized(lock) { if (streamer == null) handle(JSONObject().put("cmd", "start").put("hdr", true)) }; return START_NOT_STICKY }
+        if (intent?.action == ACTION_PREVIEW || intent?.action == ACTION_CAM_ON) { camEnabled = true; synchronized(lock) { if (streamer == null) handle(JSONObject().put("cmd", "start").put("hdr", true)) }; return START_NOT_STICKY }
         if (intent != null && listOf("w", "h", "fps", "br", "cam").any { intent.hasExtra(it) }) {
             val d = baseDefault()
             val w = intent.getIntExtra("w", d.getInt("w")); val h = intent.getIntExtra("h", d.getInt("h"))
@@ -228,6 +238,7 @@ class UsbCamService : Service() {
                 merge(ok, state(streamer))
             }
             "start" -> {
+                if (!camEnabled) return@synchronized JSONObject().put("ok", false).put("err", "camera is switched off on the phone")
                 val d = baseDefault()
                 val w = req.optInt("w", d.getInt("w")); val h = req.optInt("h", d.getInt("h"))
                 val fps = req.optInt("fps", d.getInt("fps"))

@@ -109,3 +109,4 @@ The user prefers direct, honest feedback, and narrow answers over long lists. Te
 - MainActivity is no longer forced to landscape (CameraActivity is).
 - Untested risks: encoder+preview stream combination at 4K on some phones; touch-to-sensor mapping assumes upright landscape; AE/AF region math.
 - M5c+: FOCUS chip now has separate modes: AUTO (continuous), SINGLE (AF_MODE_AUTO + AF_TRIGGER_START on tap), INFINITY (AF off, distance 0), LOCK (hold current distance), MANUAL (slider). `CamControls.focusMode`/`fm`; AE/AF lock overrides. Streamer.triggerAf().
+- M5d: Camera on/off switch on the phone main screen (UsbCamService.camEnabled; ACTION_CAM_ON/OFF). Off stops the stream, frees the camera and makes remote "start" fail with "camera is switched off on the phone" (OBS shows "phone refused start" and retries). Opening the preview turns it back on.
