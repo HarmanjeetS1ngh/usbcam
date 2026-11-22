@@ -1,51 +1,47 @@
 --------- beginning of main
-11-22 15:25:02.470 I/UsbCam  (19063): device samsung SM-S901E sdk=36
-11-22 15:25:02.470 I/UsbCam  (19063): cameras:
-11-22 15:25:02.470 I/UsbCam  (19063): cam 0 (back) f=5.4mm max 4080x3060 16:9[3840x2160,1920x1080] fps[10,15,24,26,27,30]
-11-22 15:25:02.470 I/UsbCam  (19063):    phys 2 (back) f=2.2mm max 4032x3024 16:9[3840x2160,1920x1080] fps[10,15,24,30]
-11-22 15:25:02.470 I/UsbCam  (19063):    phys 5 (back) f=5.4mm max 4080x3060 16:9[3840x2160,1920x1080] fps[10,15,24,26,27,30]
-11-22 15:25:02.470 I/UsbCam  (19063):    phys 6 (back) f=7.0mm max 3648x2736 16:9[1920x1080] fps[10,15,24,30]
-11-22 15:25:02.470 I/UsbCam  (19063): cam 1 (front) f=3.3mm max 3648x2736 16:9[1920x1080] fps[10,15,24,30]
-11-22 15:25:02.470 I/UsbCam  (19063): cam 2 (back) f=2.2mm max 4032x3024 16:9[3840x2160,1920x1080] fps[10,15,24,30]
-11-22 15:25:02.470 I/UsbCam  (19063): cam 3 (front) f=3.3mm max 3216x2208 16:9[2944x1656,1920x1080] fps[10,15,24,30]
-11-22 15:25:02.470 I/UsbCam  (19063): 
-11-22 15:25:02.470 I/UsbCam  (19063): encoders:
-11-22 15:25:02.470 I/UsbCam  (19063): HW c2.qti.avc.encoder video/avc: max 8192x8192, 220 Mbps
-11-22 15:25:02.470 I/UsbCam  (19063): HW OMX.qcom.video.encoder.avc video/avc: max 8192x8192, 220 Mbps
-11-22 15:25:02.470 I/UsbCam  (19063): HW c2.qti.hevc.encoder video/hevc: max 7680x7680, 160 Mbps
-11-22 15:25:02.470 I/UsbCam  (19063): HW OMX.qcom.video.encoder.hevc video/hevc: max 7680x7680, 160 Mbps
-11-22 15:25:02.470 I/UsbCam  (19063): HW c2.qti.hevc.encoder.cq video/hevc: max 512x512, 160 Mbps
-11-22 15:25:02.470 I/UsbCam  (19063): HW OMX.qcom.video.encoder.hevc.cq video/hevc: max 512x512, 160 Mbps
-11-22 15:25:02.470 I/UsbCam  (19063): SW c2.android.avc.encoder video/avc: max 2048x2048, 12 Mbps
-11-22 15:25:02.470 I/UsbCam  (19063): SW OMX.google.h264.encoder video/avc: max 2048x2048, 12 Mbps
-11-22 15:25:02.470 I/UsbCam  (19063): SW c2.android.hevc.encoder video/hevc: max 512x512, 10 Mbps
-11-22 15:25:02.471 I/UsbCam  (19063): START cam 0 3840x2160@30 bitrate=40000000 requestedCam=0 logicalId=0 physicalId=null
-11-22 15:25:02.508 I/UsbCam  (19063): Waiting for PC on port 5000 | cam 0 3840x2160@30
-11-22 15:25:03.035 I/UsbCam  (19063): encoder format: {max-bitrate=40000000, crop-right=3839, mime=video/avc, profile=8, bitrate=40000000, priority=0, intra-refresh-period=0, color-standard=2, feature-secure-playback=0, csd-1=java.nio.HeapByteBuffer[pos=0 lim=9 cap=9], color-transfer=3, crop-bottom=2159, vendor.qti-ext-enc-content-adaptive-mode.value=0, prepend-sps-pps-to-idr-frames=1, video-qp-average=0, crop-left=0, width=3840, bitrate-mode=2, color-range=1, crop-top=0, frame-rate=30, height=2160, csd-0=java.nio.HeapByteBuffer[pos=0 lim=23 cap=23]}
-11-22 15:25:04.488 I/UsbCam  (19063): enc fps=21.8 Mbps=26.1 drops=6
-11-22 15:25:04.504 I/UsbCam  (19063): cam fps=21.6 activePhysical=5 focalLength=5.4mm zoom=1.0
-11-22 15:25:04.942 I/UsbCam  (19063): PC connected, streaming | cam 0 3840x2160@30
-11-22 15:25:06.517 I/UsbCam  (19063): enc fps=30.0 Mbps=39.6 drops=8
-11-22 15:25:06.525 I/UsbCam  (19063): cam fps=30.2 activePhysical=5 focalLength=5.4mm zoom=1.0
-11-22 15:25:08.531 I/UsbCam  (19063): enc fps=29.9 Mbps=39.6 drops=8
-11-22 15:25:08.540 I/UsbCam  (19063): cam fps=29.8 activePhysical=5 focalLength=5.4mm zoom=1.0
-11-22 15:25:10.540 I/UsbCam  (19063): cam fps=30.0 activePhysical=5 focalLength=5.4mm zoom=1.0
-11-22 15:25:10.559 I/UsbCam  (19063): enc fps=30.0 Mbps=39.8 drops=8
-11-22 15:25:12.568 I/UsbCam  (19063): cam fps=30.1 activePhysical=5 focalLength=5.4mm zoom=1.0
-11-22 15:25:12.583 I/UsbCam  (19063): enc fps=30.1 Mbps=40.9 drops=8
-11-22 15:25:14.589 I/UsbCam  (19063): enc fps=29.9 Mbps=39.8 drops=8
-11-22 15:25:14.601 I/UsbCam  (19063): cam fps=30.0 activePhysical=5 focalLength=5.4mm zoom=1.0
-11-22 15:25:16.615 I/UsbCam  (19063): enc fps=30.1 Mbps=39.8 drops=8
-11-22 15:25:16.635 I/UsbCam  (19063): cam fps=30.0 activePhysical=5 focalLength=5.4mm zoom=1.0
-11-22 15:25:18.621 I/UsbCam  (19063): enc fps=29.9 Mbps=41.9 drops=8
-11-22 15:25:18.664 I/UsbCam  (19063): cam fps=30.1 activePhysical=5 focalLength=5.4mm zoom=1.0
-11-22 15:25:20.629 I/UsbCam  (19063): enc fps=29.9 Mbps=38.1 drops=8
-11-22 15:25:20.673 I/UsbCam  (19063): cam fps=29.9 activePhysical=5 focalLength=5.4mm zoom=1.0
-11-22 15:25:22.655 I/UsbCam  (19063): enc fps=30.1 Mbps=39.3 drops=8
-11-22 15:25:22.702 I/UsbCam  (19063): cam fps=30.1 activePhysical=5 focalLength=5.4mm zoom=1.0
-11-22 15:25:24.681 I/UsbCam  (19063): enc fps=30.1 Mbps=40.7 drops=8
-11-22 15:25:24.728 I/UsbCam  (19063): cam fps=30.1 activePhysical=5 focalLength=5.4mm zoom=1.0
-11-22 15:25:26.691 I/UsbCam  (19063): enc fps=29.9 Mbps=39.9 drops=8
-11-22 15:25:26.735 I/UsbCam  (19063): cam fps=29.9 activePhysical=5 focalLength=5.4mm zoom=1.0
-11-22 15:25:28.694 I/UsbCam  (19063): enc fps=29.9 Mbps=39.5 drops=8
-11-22 15:25:28.770 I/UsbCam  (19063): cam fps=30.0 activePhysical=5 focalLength=5.4mm zoom=1.0
+11-22 15:40:40.301 I/UsbCam  (22775): device samsung SM-S901E sdk=36
+11-22 15:40:40.301 I/UsbCam  (22775): cameras:
+11-22 15:40:40.301 I/UsbCam  (22775): cam 0 (back) f=5.4mm max 4080x3060 16:9[3840x2160,1920x1080] fps[10,15,24,26,27,30] hs[120,240]
+11-22 15:40:40.301 I/UsbCam  (22775):    phys 2 (back) f=2.2mm max 4032x3024 16:9[3840x2160,1920x1080] fps[10,15,24,30] hs[120]
+11-22 15:40:40.301 I/UsbCam  (22775):    phys 5 (back) f=5.4mm max 4080x3060 16:9[3840x2160,1920x1080] fps[10,15,24,26,27,30] hs[120,240]
+11-22 15:40:40.301 I/UsbCam  (22775):    phys 6 (back) f=7.0mm max 3648x2736 16:9[1920x1080] fps[10,15,24,30] hs[]
+11-22 15:40:40.301 I/UsbCam  (22775): cam 1 (front) f=3.3mm max 3648x2736 16:9[1920x1080] fps[10,15,24,30] hs[120]
+11-22 15:40:40.301 I/UsbCam  (22775): cam 2 (back) f=2.2mm max 4032x3024 16:9[3840x2160,1920x1080] fps[10,15,24,30] hs[120]
+11-22 15:40:40.301 I/UsbCam  (22775): cam 3 (front) f=3.3mm max 3216x2208 16:9[2944x1656,1920x1080] fps[10,15,24,30] hs[120]
+11-22 15:40:40.301 I/UsbCam  (22775): 
+11-22 15:40:40.301 I/UsbCam  (22775): encoders:
+11-22 15:40:40.301 I/UsbCam  (22775): HW c2.qti.avc.encoder video/avc: max 8192x8192, 220 Mbps
+11-22 15:40:40.301 I/UsbCam  (22775): HW OMX.qcom.video.encoder.avc video/avc: max 8192x8192, 220 Mbps
+11-22 15:40:40.301 I/UsbCam  (22775): HW c2.qti.hevc.encoder video/hevc: max 7680x7680, 160 Mbps
+11-22 15:40:40.301 I/UsbCam  (22775): HW OMX.qcom.video.encoder.hevc video/hevc: max 7680x7680, 160 Mbps
+11-22 15:40:40.301 I/UsbCam  (22775): HW c2.qti.hevc.encoder.cq video/hevc: max 512x512, 160 Mbps
+11-22 15:40:40.301 I/UsbCam  (22775): HW OMX.qcom.video.encoder.hevc.cq video/hevc: max 512x512, 160 Mbps
+11-22 15:40:40.301 I/UsbCam  (22775): SW c2.android.avc.encoder video/avc: max 2048x2048, 12 Mbps
+11-22 15:40:40.301 I/UsbCam  (22775): SW OMX.google.h264.encoder video/avc: max 2048x2048, 12 Mbps
+11-22 15:40:40.301 I/UsbCam  (22775): SW c2.android.hevc.encoder video/hevc: max 512x512, 10 Mbps
+11-22 15:40:40.305 I/UsbCam  (22775): START cam 0 3840x2160@30 bitrate=40000000 requestedCam=0 logicalId=0 physicalId=null aeRange=[30, 30] zoom=0.0
+11-22 15:40:40.343 I/UsbCam  (22775): Waiting for PC on port 5000 | cam 0 3840x2160@30
+11-22 15:40:40.863 I/UsbCam  (22775): encoder format: {max-bitrate=40000000, crop-right=3839, mime=video/avc, profile=8, bitrate=40000000, priority=0, intra-refresh-period=0, color-standard=2, feature-secure-playback=0, csd-1=java.nio.HeapByteBuffer[pos=0 lim=9 cap=9], color-transfer=3, crop-bottom=2159, vendor.qti-ext-enc-content-adaptive-mode.value=0, prepend-sps-pps-to-idr-frames=1, video-qp-average=0, crop-left=0, width=3840, bitrate-mode=2, color-range=1, crop-top=0, frame-rate=30, height=2160, csd-0=java.nio.HeapByteBuffer[pos=0 lim=23 cap=23]}
+11-22 15:40:42.320 I/UsbCam  (22775): cam fps=21.8 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060)
+11-22 15:40:42.340 I/UsbCam  (22775): enc fps=22.1 Mbps=20.1 drops=6
+11-22 15:40:42.903 I/UsbCam  (22775): PC connected, streaming | cam 0 3840x2160@30
+11-22 15:40:44.346 I/UsbCam  (22775): cam fps=30.1 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060)
+11-22 15:40:44.366 I/UsbCam  (22775): enc fps=30.1 Mbps=37.4 drops=8
+11-22 15:40:46.357 I/UsbCam  (22775): cam fps=29.8 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060)
+11-22 15:40:46.378 I/UsbCam  (22775): enc fps=29.8 Mbps=39.2 drops=8
+11-22 15:40:48.358 I/UsbCam  (22775): cam fps=30.0 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060)
+11-22 15:40:48.381 I/UsbCam  (22775): enc fps=30.0 Mbps=40.1 drops=8
+11-22 15:40:50.386 I/UsbCam  (22775): cam fps=30.1 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060)
+11-22 15:40:50.412 I/UsbCam  (22775): enc fps=30.0 Mbps=39.2 drops=8
+11-22 15:40:52.397 I/UsbCam  (22775): cam fps=29.8 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060)
+11-22 15:40:52.419 I/UsbCam  (22775): enc fps=29.9 Mbps=40.2 drops=8
+11-22 15:40:54.423 I/UsbCam  (22775): cam fps=30.1 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060)
+11-22 15:40:54.453 I/UsbCam  (22775): enc fps=30.0 Mbps=40.7 drops=8
+11-22 15:40:56.458 I/UsbCam  (22775): cam fps=29.9 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060)
+11-22 15:40:56.478 I/UsbCam  (22775): enc fps=30.1 Mbps=39.0 drops=8
+11-22 15:40:58.486 I/UsbCam  (22775): cam fps=30.1 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060)
+11-22 15:40:58.506 I/UsbCam  (22775): enc fps=30.1 Mbps=41.2 drops=8
+11-22 15:41:00.512 I/UsbCam  (22775): enc fps=29.9 Mbps=39.4 drops=8
+11-22 15:41:00.522 I/UsbCam  (22775): cam fps=30.0 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060)
+11-22 15:41:02.535 I/UsbCam  (22775): enc fps=30.1 Mbps=27.2 drops=8
+11-22 15:41:02.546 I/UsbCam  (22775): cam fps=30.1 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060)

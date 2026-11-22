@@ -66,7 +66,8 @@ class MainActivity : Activity() {
             port = i.getIntExtra("port", 5000),
             facing = i.getIntExtra("facing", 1), // 1 = back, 0 = front
             cam = i.getStringExtra("cam"),
-            zoom = i.getFloatExtra("zoom", 0f)
+            zoom = i.getFloatExtra("zoom", 0f),
+            uc = i.getBooleanExtra("uc", false)
         )
         val s = Streamer(this) { msg -> runOnUiThread { status(msg) } }
         streamer = s
@@ -74,7 +75,7 @@ class MainActivity : Activity() {
     }
 
     private fun status(msg: String) { last = msg; Log.i("UsbCam", msg); render() }
-    private fun render() { tv.text = "UsbCam m1g\n$last\n\nCameras (use: --es cam <id>):\n$cams\nEncoders:\n$caps" }
+    private fun render() { tv.text = "UsbCam m1h\n$last\n\nCameras (use: --es cam <id>):\n$cams\nEncoders:\n$caps" }
 
     override fun onDestroy() {
         streamer?.stop()

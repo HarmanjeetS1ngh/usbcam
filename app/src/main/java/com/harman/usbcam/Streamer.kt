@@ -6,6 +6,7 @@ import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
+import android.hardware.camera2.CameraMetadata
 import android.hardware.camera2.CaptureRequest
 import android.hardware.camera2.CaptureResult
 import android.hardware.camera2.TotalCaptureResult
@@ -34,7 +35,7 @@ import java.util.concurrent.TimeUnit
  */
 class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit) {
 
-    class Config(var w: Int, var h: Int, var fps: Int, val bitrate: Int, val port: Int, val facing: Int, val cam: String? = null, val zoom: Float = 0f)
+    class Config(var w: Int, var h: Int, var fps: Int, val bitrate: Int, val port: Int, val facing: Int, val cam: String? = null, val zoom: Float = 0f, val uc: Boolean = false)
     private class Pkt(val data: ByteArray, val key: Boolean)
 
     @Volatile private var running = false
@@ -72,6 +73,11 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
         val note = snap(mgr, target, cfg) + pickFps(mgr, target.first, cfg)
         info = "cam ${target.second ?: target.first} ${cfg.w}x${cfg.h}@${cfg.fps}$note"
         log("START $info bitrate=${cfg.bitrate} requestedCam=${cfg.cam} logicalId=${target.first} physicalId=${target.second} aeRange=$aeRange zoom=${cfg.zoom}")
+
+        if (Build.VERSION.SDK_INT >= 33) try {
+            log("streamUseCases=" + mgr.getCameraCharacteristics(target.first)
+                .get(CameraCharacteristics.SCALER_AVAILABLE_STREAM_USE_CASES)?.joinToString(",") + " uc=${cfg.uc}")
+        } catch (_: Exception) {}
 
         val fmt = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, cfg.w, cfg.h).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
@@ -269,8 +275,12 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
                         onStatus("Camera session failed: $info unsupported on this camera")
                     }
                 }
-                if (phys != null && Build.VERSION.SDK_INT >= 28) {
-                    val oc = OutputConfiguration(surface).apply { setPhysicalCameraId(phys) }
+                val useCase = cfg.uc && Build.VERSION.SDK_INT >= 33
+                if ((phys != null || useCase) && Build.VERSION.SDK_INT >= 28) {
+                    val oc = OutputConfiguration(surface).apply {
+                        if (phys != null) setPhysicalCameraId(phys)
+                        if (useCase) setStreamUseCase(CameraMetadata.SCALER_AVAILABLE_STREAM_USE_CASES_VIDEO_RECORD.toLong())
+                    }
                     val sc = SessionConfiguration(SessionConfiguration.SESSION_REGULAR, listOf(oc), { r -> h.post(r) }, cb)
                     cam.createCaptureSession(sc)
                 } else {
