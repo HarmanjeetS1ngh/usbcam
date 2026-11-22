@@ -10,8 +10,8 @@ android {
         applicationId = "com.harman.usbcam"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1-m1j"
+        versionCode = 2
+        versionName = "0.2-m2"
     }
     buildTypes { release { isMinifyEnabled = false } }
     compileOptions {

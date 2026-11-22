@@ -1,0 +1,35 @@
+--------- beginning of main
+11-22 16:35:43.284 I/UsbCam  ( 3833): device samsung SM-S901E sdk=36
+11-22 16:35:43.284 I/UsbCam  ( 3833): cameras:
+11-22 16:35:43.284 I/UsbCam  ( 3833): cam 0 (back) f=5.4mm max 4080x3060 16:9[3840x2160,1920x1080] fps[10,15,24,26,27,30] hs[120,240]
+11-22 16:35:43.284 I/UsbCam  ( 3833):    phys 2 (back) f=2.2mm max 4032x3024 16:9[3840x2160,1920x1080] fps[10,15,24,30] hs[120]
+11-22 16:35:43.284 I/UsbCam  ( 3833):    phys 5 (back) f=5.4mm max 4080x3060 16:9[3840x2160,1920x1080] fps[10,15,24,26,27,30] hs[120,240]
+11-22 16:35:43.284 I/UsbCam  ( 3833):    phys 6 (back) f=7.0mm max 3648x2736 16:9[1920x1080] fps[10,15,24,30] hs[]
+11-22 16:35:43.284 I/UsbCam  ( 3833): cam 1 (front) f=3.3mm max 3648x2736 16:9[1920x1080] fps[10,15,24,30] hs[120]
+11-22 16:35:43.284 I/UsbCam  ( 3833): cam 2 (back) f=2.2mm max 4032x3024 16:9[3840x2160,1920x1080] fps[10,15,24,30] hs[120]
+11-22 16:35:43.284 I/UsbCam  ( 3833): cam 3 (front) f=3.3mm max 3216x2208 16:9[2944x1656,1920x1080] fps[10,15,24,30] hs[120]
+11-22 16:35:43.284 I/UsbCam  ( 3833): 
+11-22 16:35:43.284 I/UsbCam  ( 3833): encoders:
+11-22 16:35:43.284 I/UsbCam  ( 3833): HW c2.qti.avc.encoder video/avc: max 8192x8192, 220 Mbps
+11-22 16:35:43.284 I/UsbCam  ( 3833): HW OMX.qcom.video.encoder.avc video/avc: max 8192x8192, 220 Mbps
+11-22 16:35:43.284 I/UsbCam  ( 3833): HW c2.qti.hevc.encoder video/hevc: max 7680x7680, 160 Mbps
+11-22 16:35:43.284 I/UsbCam  ( 3833): HW OMX.qcom.video.encoder.hevc video/hevc: max 7680x7680, 160 Mbps
+11-22 16:35:43.284 I/UsbCam  ( 3833): HW c2.qti.hevc.encoder.cq video/hevc: max 512x512, 160 Mbps
+11-22 16:35:43.284 I/UsbCam  ( 3833): HW OMX.qcom.video.encoder.hevc.cq video/hevc: max 512x512, 160 Mbps
+11-22 16:35:43.284 I/UsbCam  ( 3833): SW c2.android.avc.encoder video/avc: max 2048x2048, 12 Mbps
+11-22 16:35:43.284 I/UsbCam  ( 3833): SW OMX.google.h264.encoder video/avc: max 2048x2048, 12 Mbps
+11-22 16:35:43.284 I/UsbCam  ( 3833): SW c2.android.hevc.encoder video/hevc: max 512x512, 10 Mbps
+11-22 16:35:43.288 I/UsbCam  ( 3833): START cam 0 1920x1080@30 (snapped from 3264x1836) bitrate=30000000 requestedCam=0 logicalId=0 physicalId=null aeRange=[30, 30] zoom=0.0
+11-22 16:35:43.331 I/UsbCam  ( 3833): Waiting for PC on port 5000 | cam 0 1920x1080@30 (snapped from 3264x1836)
+11-22 16:35:43.841 I/UsbCam  ( 3833): encoder format: {max-bitrate=30000000, crop-right=1919, mime=video/avc, profile=8, bitrate=30000000, priority=0, intra-refresh-period=0, color-standard=2, feature-secure-playback=0, csd-1=java.nio.HeapByteBuffer[pos=0 lim=9 cap=9], color-transfer=3, crop-bottom=1079, vendor.qti-ext-enc-content-adaptive-mode.value=0, prepend-sps-pps-to-idr-frames=1, video-qp-average=0, crop-left=0, width=1920, bitrate-mode=2, color-range=1, crop-top=0, frame-rate=30, height=1080, csd-0=java.nio.HeapByteBuffer[pos=0 lim=23 cap=23]}
+11-22 16:35:45.289 I/UsbCam  ( 3833): enc fps=22.0 Mbps=22.0 drops=6
+11-22 16:35:45.309 I/UsbCam  ( 3833): cam fps=21.8 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060) stab=0 ois=1
+11-22 16:35:45.960 I/UsbCam  ( 3833): PC connected, streaming | cam 0 1920x1080@30 (snapped from 3264x1836)
+11-22 16:35:47.318 I/UsbCam  ( 3833): enc fps=30.1 Mbps=27.6 drops=9
+11-22 16:35:47.334 I/UsbCam  ( 3833): cam fps=30.1 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060) stab=0 ois=1
+11-22 16:35:49.323 I/UsbCam  ( 3833): enc fps=29.9 Mbps=25.7 drops=9
+11-22 16:35:49.338 I/UsbCam  ( 3833): cam fps=29.9 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060) stab=0 ois=1
+11-22 16:35:51.344 I/UsbCam  ( 3833): cam fps=29.9 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060) stab=0 ois=1
+11-22 16:35:51.355 I/UsbCam  ( 3833): enc fps=30.0 Mbps=27.2 drops=9
+11-22 16:35:53.371 I/UsbCam  ( 3833): cam fps=30.1 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060) stab=0 ois=1
+11-22 16:35:53.382 I/UsbCam  ( 3833): enc fps=30.1 Mbps=28.3 drops=9

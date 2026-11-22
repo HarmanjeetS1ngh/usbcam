@@ -26,6 +26,7 @@ import android.view.Surface
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 
@@ -37,8 +38,16 @@ import java.util.concurrent.TimeUnit
 class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit) {
 
     class Config(var w: Int, var h: Int, var fps: Int, val bitrate: Int, val port: Int, val facing: Int, val cam: String? = null, val zoom: Float = 0f,
-                 val gl: Boolean = false, val tpl: Int = 0, val nostab: Boolean = false, val sw: Int = 0, val sh: Int = 0, val usemtx: Boolean = false)
-    private class Pkt(val data: ByteArray, val key: Boolean)
+                 val gl: Boolean = false, val tpl: Int = 0, val nostab: Boolean = false, val sw: Int = 0, val sh: Int = 0, val usemtx: Boolean = false,
+                 val hdr: Boolean = false)
+
+    /** Pooled frame buffer: [HDR bytes reserved for the wire header][payload]. Reused, so no per-frame allocation. */
+    private class Pkt(var buf: ByteArray) { var len = 0; var pts = 0L; var key = false }
+    companion object {
+        const val HDR = 13        // [4B payload length][8B pts_us][1B flags], big-endian
+        const val F_KEY = 1; const val F_CFG = 2
+        private const val POOL = 10 // queue(6) + one in drain + one in pump + spare
+    }
 
     @Volatile private var running = false
     @Volatile private var info = ""
@@ -59,6 +68,11 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
     private var camThread: HandlerThread? = null
     private var server: ServerSocket? = null
     private val queue = LinkedBlockingQueue<Pkt>(6) // small on purpose: latency over completeness
+    private val pool = ArrayBlockingQueue<Pkt>(POOL).also { for (i in 0 until POOL) it.add(Pkt(ByteArray(HDR + 262_144))) }
+    @Volatile var encFpsNow = 0f; @Volatile var encMbpsNow = 0f; @Volatile var clientConnected = false
+    @Volatile var cfgNow: Config? = null
+    val infoText: String get() = info
+    val dropCount: Int get() = drops
     private val threads = mutableListOf<Thread>()
 
     @SuppressLint("MissingPermission")
@@ -67,7 +81,8 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
         running = true
         resync = true
         codecConfig = null
-        queue.clear()
+        drainQueue()
+        cfgNow = cfg
         drops = 0; encFrames = 0; encBytes = 0; camFrames = 0
         encT = System.nanoTime(); camT = encT
 
@@ -94,7 +109,7 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
         codec = c
 
         spawn("drain") { drain(c) }
-        spawn("net") { serve(cfg.port, c) }
+        spawn("net") { serve(cfg.port, c, cfg.hdr) }
         var camSurface: Surface = input
         if (cfg.gl) {
             val src = pickSrc(mgr, target, cfg)
@@ -110,6 +125,7 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
 
     fun stop() {
         running = false
+        clientConnected = false
         try { server?.close() } catch (_: Exception) {}
         try { session?.stopRepeating(); session?.close() } catch (_: Exception) {}
         try { camera?.close() } catch (_: Exception) {}
@@ -126,6 +142,16 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
         val t = Thread(r, name); threads.add(t); t.start()
     }
 
+    fun keyframe() { codec?.let { requestKey(it) } }
+
+    fun setBitrate(bps: Int) {
+        try { codec?.setParameters(Bundle().apply { putInt(MediaCodec.PARAMETER_KEY_VIDEO_BITRATE, bps) }) } catch (_: Exception) {}
+    }
+
+    private fun recycle(p: Pkt) { pool.offer(p) }
+    private fun drainQueue() { while (true) { recycle(queue.poll() ?: break) } }
+    private fun dropAll(c: MediaCodec) { drops++; drainQueue(); resync = true; requestKey(c) }
+
     private fun requestKey(c: MediaCodec) {
         try {
             c.setParameters(Bundle().apply { putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0) })
@@ -140,22 +166,27 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
             if (i < 0) continue
             val buf = c.getOutputBuffer(i)
             if (buf != null && info.size > 0) {
-                val bytes = ByteArray(info.size) // M2: replace with a buffer pool to cut GC churn
-                buf.position(info.offset); buf.limit(info.offset + info.size); buf.get(bytes)
                 encFrames++; encBytes += info.size
                 val now = System.nanoTime()
                 if (now - encT > 2_000_000_000L) {
                     val sec = (now - encT) / 1e9
-                    log("enc fps=${"%.1f".format(encFrames / sec)} Mbps=${"%.1f".format(encBytes * 8 / sec / 1e6)} drops=$drops")
+                    encFpsNow = (encFrames / sec).toFloat(); encMbpsNow = (encBytes * 8 / sec / 1e6).toFloat()
+                    log("enc fps=${"%.1f".format(encFpsNow)} Mbps=${"%.1f".format(encMbpsNow)} drops=$drops")
                     encFrames = 0; encBytes = 0; encT = now
                 }
+                buf.position(info.offset); buf.limit(info.offset + info.size)
                 if (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) {
-                    codecConfig = bytes
+                    codecConfig = ByteArray(info.size).also { buf.get(it) }
                 } else {
-                    val key = info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME != 0
-                    if (!queue.offer(Pkt(bytes, key))) {
+                    val p = pool.poll()
+                    if (p == null) dropAll(c) // all buffers in flight: consumer too slow
+                    else {
+                        if (p.buf.size < HDR + info.size) p.buf = ByteArray((HDR + info.size) * 3 / 2)
+                        buf.get(p.buf, HDR, info.size)
+                        p.len = info.size; p.pts = info.presentationTimeUs
+                        p.key = info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME != 0
                         // Consumer too slow (or nobody connected): drop everything, resume at next keyframe.
-                        drops++; queue.clear(); resync = true; requestKey(c)
+                        if (!queue.offer(p)) { recycle(p); dropAll(c) }
                     }
                 }
             }
@@ -163,7 +194,7 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
         }
     }
 
-    private fun serve(port: Int, c: MediaCodec) {
+    private fun serve(port: Int, c: MediaCodec, hdr: Boolean) {
         try {
             val ss = ServerSocket(port, 1, InetAddress.getByName("127.0.0.1"))
             server = ss
@@ -171,7 +202,9 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
             while (running) {
                 val s = try { ss.accept() } catch (_: Exception) { break }
                 onStatus("PC connected, streaming | $info")
-                try { pump(s, c) } catch (_: Exception) {}
+                clientConnected = true
+                try { pump(s, c, hdr) } catch (_: Exception) {}
+                clientConnected = false
                 try { s.close() } catch (_: Exception) {}
                 if (running) onStatus("PC disconnected, waiting on port $port | $info")
             }
@@ -180,17 +213,34 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
         }
     }
 
-    private fun pump(s: Socket, c: MediaCodec) {
+    private fun putHeader(b: ByteArray, len: Int, pts: Long, flags: Int) {
+        b[0] = (len ushr 24).toByte(); b[1] = (len ushr 16).toByte(); b[2] = (len ushr 8).toByte(); b[3] = len.toByte()
+        for (i in 0 until 8) b[4 + i] = (pts ushr (56 - 8 * i)).toByte()
+        b[12] = flags.toByte()
+    }
+
+    /** hdr=false: raw Annex-B (ffplay / obs-bridge). hdr=true: [len][pts_us][flags] + payload per frame (M3 receiver). */
+    private fun pump(s: Socket, c: MediaCodec, hdr: Boolean) {
         s.tcpNoDelay = true
         val out = s.getOutputStream()
-        queue.clear()
+        drainQueue()
         resync = true
         requestKey(c)
-        codecConfig?.let { out.write(it) }
+        codecConfig?.let {
+            if (hdr) {
+                val b = ByteArray(HDR + it.size); System.arraycopy(it, 0, b, HDR, it.size)
+                putHeader(b, it.size, 0L, F_CFG); out.write(b)
+            } else out.write(it)
+        }
         while (running) {
             val p = queue.poll(200, TimeUnit.MILLISECONDS) ?: continue
-            if (resync) { if (!p.key) continue; resync = false }
-            out.write(p.data)
+            try {
+                if (resync) { if (!p.key) continue; resync = false }
+                if (hdr) {
+                    putHeader(p.buf, p.len, p.pts, if (p.key) F_KEY else 0)
+                    out.write(p.buf, 0, HDR + p.len)
+                } else out.write(p.buf, HDR, p.len)
+            } finally { recycle(p) }
         }
     }
 
