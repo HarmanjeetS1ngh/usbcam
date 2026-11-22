@@ -23,12 +23,15 @@ class ControlServer(private val port: Int, private val handler: (JSONObject) -> 
 
     private fun loop() {
         try {
-            val s = ServerSocket(port, 1, InetAddress.getByName("127.0.0.1"))
+            val s = ServerSocket(port, 8, InetAddress.getByName("127.0.0.1"))
             ss = s
             while (running) {
                 val c = try { s.accept() } catch (_: Exception) { break }
-                try { serve(c) } catch (_: Exception) {}
-                try { c.close() } catch (_: Exception) {}
+                // one thread per client: the PC tray can talk to the phone while the viewer / OBS plugin is connected
+                Thread({
+                    try { serve(c) } catch (_: Exception) {}
+                    try { c.close() } catch (_: Exception) {}
+                }, "ctl-client").start()
             }
         } catch (e: Exception) {
             Log.e("UsbCam", "control server error: ${e.message}")

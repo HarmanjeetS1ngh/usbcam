@@ -41,6 +41,14 @@ object Caps {
         return (w.toLong() * h * fps / 5).coerceIn(2_000_000L, minOf(100_000_000L, max)).toInt()
     }
 
+    private fun roundUp(v: Int, a: Int): Int = if (a <= 1) v else (v + a - 1) / a * a
+
+    /** Max fps the encoder offers for this size (aligned up), or null if the size is outside its range. */
+    private fun encMaxFps(vc: MediaCodecInfo.VideoCapabilities, w: Int, h: Int): Int? = try {
+        val aw = roundUp(w, vc.widthAlignment); val ah = roundUp(h, vc.heightAlignment)
+        if (vc.isSizeSupported(aw, ah)) vc.getSupportedFrameRatesFor(aw, ah).upper.toInt() else null
+    } catch (_: Exception) { null }
+
     private fun modes(camId: String, ch: CameraCharacteristics, vc: MediaCodecInfo.VideoCapabilities?): JSONArray {
         val out = JSONArray()
         val map = ch.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP) ?: return out
@@ -48,8 +56,9 @@ object Caps {
         val sizes = map.getOutputSizes(MediaCodec::class.java) ?: return out
         for (s in sizes.filter { it.width * 9 == it.height * 16 && it.width >= 1280 }.sortedByDescending { it.width }) {
             try {
-                if (vc != null && !vc.isSizeSupported(s.width, s.height)) continue
-                val encMax = vc?.getSupportedFrameRatesFor(s.width, s.height)?.upper?.toInt() ?: 60
+                // Surface-input encoders pad e.g. 1080 -> 1088, so test the aligned size. (isSizeSupported(1920,1080) is false on
+                // encoders with 16-pixel height alignment, which hid 1080p on the Realme 7; it still streams fine.)
+                val encMax = if (vc == null) 60 else encMaxFps(vc, s.width, s.height) ?: continue
                 val dur = map.getOutputMinFrameDuration(MediaCodec::class.java, s)
                 val camMax = if (dur > 0) (1_000_000_000.0 / dur + 0.5).toInt() else 60
                 val fps = ae.filter { it in FPS_OK && it <= encMax && it <= camMax }.sortedDescending()

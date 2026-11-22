@@ -10,9 +10,12 @@ android {
         applicationId = "com.harman.usbcam"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "0.2-m2"
+        versionCode = 5
+        versionName = "0.5-m5"
     }
+    // Fixed debug key (checked into the repo, not a secret): every build is signed the same, so updates install over the old app
+    // and keep the camera permission. (The first install after this change needs one uninstall; setup.ps1 does it.)
+    signingConfigs { getByName("debug") { storeFile = file("debug.keystore"); storePassword = "android"; keyAlias = "androiddebugkey"; keyPassword = "android" } }
     buildTypes { release { isMinifyEnabled = false } }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
