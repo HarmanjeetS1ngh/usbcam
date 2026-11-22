@@ -33,7 +33,7 @@ class CamControls {
     val locked: Boolean get() = aeLock || afLock
     /** The focus mode actually in force (an AE/AF lock overrides the chosen mode). */
     val fm: Int get() = if (afLock) FM_LOCK else focusMode
-    fun setFocusMode(m: Int) { afLock = false; focusMode = m; if (m == FM_LOCK) { afLock = true; focusDist = liveFocus } }
+    fun chooseFocus(m: Int) { afLock = false; focusMode = m; if (m == FM_LOCK) { afLock = true; focusDist = liveFocus } }
 
     fun load(ch: CameraCharacteristics?, fpsNow: Int) {
         fps = fpsNow

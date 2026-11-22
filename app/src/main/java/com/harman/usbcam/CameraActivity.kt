@@ -152,7 +152,7 @@ class CameraActivity : Activity() {
                               CamControls.FM_LOCK to "LOCK\nhold focus", CamControls.FM_MANUAL to "MANUAL\nslider")) {
             val t = label(n, 11f).apply { setPadding(dp(4), dp(6), dp(4), dp(6)); setOnClickListener {
                 val c = ctl() ?: return@setOnClickListener
-                c.setFocusMode(m); if (m == CamControls.FM_MANUAL) c.focusDist = c.liveFocus
+                c.chooseFocus(m); if (m == CamControls.FM_MANUAL) c.focusDist = c.liveFocus
                 push(); if (m == CamControls.FM_SINGLE) UsbCamService.instance?.triggerAf()
                 sync(); update() } }
             modeBtns[m] = t; modeRow.addView(t, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(dp(3), 0, dp(3), 0) })
@@ -222,7 +222,7 @@ class CameraActivity : Activity() {
             "SPEED" -> { if (!c.manualOk) { noManual(); return }; seedManual(c); c.expNs = fromLog(p, expLo(c), expHi(c)).toLong() }
             "EV" -> c.ev = c.evMin + p
             "FOCUS" -> { if (c.minFocus <= 0f) { Toast.makeText(this, "This camera has fixed focus", Toast.LENGTH_SHORT).show(); return }
-                c.setFocusMode(CamControls.FM_MANUAL); c.focusDist = c.minFocus * (1f - p / 100f) }
+                c.chooseFocus(CamControls.FM_MANUAL); c.focusDist = c.minFocus * (1f - p / 100f) }
         }
         push(); update()
     }
@@ -234,7 +234,7 @@ class CameraActivity : Activity() {
         when (sel) {
             "ISO", "SPEED" -> c.manualExp = false
             "EV" -> c.ev = 0
-            "FOCUS" -> c.setFocusMode(CamControls.FM_AUTO)
+            "FOCUS" -> c.chooseFocus(CamControls.FM_AUTO)
             "WB" -> c.awbLock = !c.awbLock
         }
         push(); sync(); update()
