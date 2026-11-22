@@ -31,7 +31,7 @@ import java.util.concurrent.TimeUnit
  */
 class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit) {
 
-    class Config(val w: Int, val h: Int, val fps: Int, val bitrate: Int, val port: Int, val facing: Int, val cam: String? = null)
+    class Config(var w: Int, var h: Int, val fps: Int, val bitrate: Int, val port: Int, val facing: Int, val cam: String? = null)
     private class Pkt(val data: ByteArray, val key: Boolean)
 
     @Volatile private var running = false
@@ -54,6 +54,11 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
         codecConfig = null
         queue.clear()
 
+        val mgr = ctx.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+        val target = resolve(mgr, cfg)
+        val note = snap(mgr, target, cfg)
+        info = "cam ${target.second ?: target.first} ${cfg.w}x${cfg.h}@${cfg.fps}$note"
+
         val fmt = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, cfg.w, cfg.h).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
             setInteger(MediaFormat.KEY_BIT_RATE, cfg.bitrate)
@@ -70,9 +75,6 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
         c.start()
         codec = c
 
-        val mgr = ctx.getSystemService(Context.CAMERA_SERVICE) as CameraManager
-        val target = resolve(mgr, cfg)
-        info = "cam ${target.second ?: target.first} ${cfg.w}x${cfg.h}@${cfg.fps}"
         spawn("drain") { drain(c) }
         spawn("net") { serve(cfg.port, c) }
         openCamera(mgr, target, cfg, input)
@@ -152,6 +154,24 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
             if (resync) { if (!p.key) continue; resync = false }
             out.write(p.data)
         }
+    }
+
+    /** If the camera cannot output the requested size, use the largest supported size with the same aspect ratio. */
+    private fun snap(mgr: CameraManager, target: Pair<String, String?>, cfg: Config): String {
+        try {
+            val ch = try { mgr.getCameraCharacteristics(target.second ?: target.first) }
+                     catch (_: Exception) { mgr.getCameraCharacteristics(target.first) }
+            val sizes = ch.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+                ?.getOutputSizes(MediaCodec::class.java) ?: return ""
+            if (sizes.any { it.width == cfg.w && it.height == cfg.h }) return ""
+            val ar = cfg.w.toDouble() / cfg.h
+            val best = sizes.filter {
+                Math.abs(it.width.toDouble() / it.height - ar) < 0.02 && it.width <= cfg.w && it.height <= cfg.h
+            }.maxByOrNull { it.width.toLong() * it.height } ?: return ""
+            val note = " (snapped from ${cfg.w}x${cfg.h})"
+            cfg.w = best.width; cfg.h = best.height
+            return note
+        } catch (_: Exception) { return "" }
     }
 
     /** Pick camera: explicit id (normal or physical sub-camera of a logical one), else first with requested facing. */

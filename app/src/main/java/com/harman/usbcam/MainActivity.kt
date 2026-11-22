@@ -82,10 +82,13 @@ class MainActivity : Activity() {
     private fun describe(c: CameraCharacteristics, label: String, indent: String): String {
         val face = when (c.get(CameraCharacteristics.LENS_FACING)) { 0 -> "front"; 1 -> "back"; else -> "ext" }
         val fl = c.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)?.joinToString("/") ?: "?"
-        val best = c.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
-            ?.getOutputSizes(MediaCodec::class.java)?.maxByOrNull { it.width.toLong() * it.height }
-        val fps = c.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)?.maxOfOrNull { it.upper } ?: 0
-        return "$indent$label ($face) f=${fl}mm max ${best?.width}x${best?.height} fps<=$fps\n"
+        val all = c.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)?.getOutputSizes(MediaCodec::class.java)
+        val best = all?.maxByOrNull { it.width.toLong() * it.height }
+        val wide = all?.filter { it.width * 9 == it.height * 16 && it.width >= 1920 }
+            ?.sortedByDescending { it.width }?.take(4)?.joinToString(",") { "${it.width}x${it.height}" } ?: ""
+        val fps = c.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
+            ?.map { it.upper }?.distinct()?.sorted()?.joinToString(",") ?: "?"
+        return "$indent$label ($face) f=${fl}mm max ${best?.width}x${best?.height} 16:9[$wide] fps[$fps]\n"
     }
 
     private fun camsText(): String {
