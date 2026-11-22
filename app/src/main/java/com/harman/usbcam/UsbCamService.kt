@@ -51,7 +51,7 @@ class UsbCamService : Service() {
     val controls = CamControls()
     private var previewSurface: android.view.Surface? = null
 
-    fun setPreview(sf: android.view.Surface?) { previewSurface = sf; synchronized(lock) { streamer?.setPreview(sf) } }
+    fun setPreview(sf: android.view.Surface?) { previewSurface = sf; synchronized(lock) { streamer?.attachPreview(sf) } }
     fun applyControls() { streamer?.applyControls() }
     fun clientOn(): Boolean = streamer?.clientConnected == true
     fun infoNow(): String = streamer?.infoText ?: ""

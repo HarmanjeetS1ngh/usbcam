@@ -362,7 +362,7 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
     }
 
     /** Called from the UI when the preview surface appears (non-null) or goes away (null). Re-creates only the camera session; the encoder keeps running. */
-    fun setPreview(sf: Surface?) {
+    fun attachPreview(sf: Surface?) {
         preview = sf
         camHandler?.post { if (running && camera != null) startSession() }
     }
