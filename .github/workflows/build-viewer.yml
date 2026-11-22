@@ -1,0 +1,34 @@
+name: build-viewer
+on: [push, workflow_dispatch]
+jobs:
+  viewer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch FFmpeg 8.1 (LGPL shared) and SDL2 2.32.10
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Invoke-WebRequest "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-win64-lgpl-shared-8.1.zip" -OutFile ff.zip
+          Invoke-WebRequest "https://github.com/libsdl-org/SDL/releases/download/release-2.32.10/SDL2-devel-2.32.10-VC.zip" -OutFile sdl.zip
+          Expand-Archive ff.zip -DestinationPath deps
+          Expand-Archive sdl.zip -DestinationPath deps
+      - name: Build
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ff  = ((Get-ChildItem deps -Directory -Filter 'ffmpeg-*').FullName) -replace '\\','/'
+          $sdl = ((Get-ChildItem deps -Directory -Filter 'SDL2-*').FullName) -replace '\\','/'
+          cmake -S pc-recv -B build -A x64 "-DFFMPEG_DIR=$ff" "-DSDL2_DIR=$sdl"
+          if ($LASTEXITCODE -ne 0) { throw 'cmake configure failed' }
+          cmake --build build --config Release
+          if ($LASTEXITCODE -ne 0) { throw 'cmake build failed' }
+          New-Item -ItemType Directory out | Out-Null
+          Copy-Item build/Release/usbcam_view.exe out/
+          Copy-Item "$ff/bin/avcodec-*.dll","$ff/bin/avutil-*.dll","$ff/bin/swresample-*.dll" out/
+          Copy-Item "$sdl/lib/x64/SDL2.dll" out/
+          Get-ChildItem out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: usbcam-viewer
+          path: out
