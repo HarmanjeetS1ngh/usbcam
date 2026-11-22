@@ -26,7 +26,8 @@ import java.util.concurrent.TimeUnit
  */
 class GlBridge(
     private val out: Surface, private val outW: Int, private val outH: Int,
-    private val srcW: Int, private val srcH: Int
+    private val srcW: Int, private val srcH: Int,
+    private val useMtx: Boolean = false
 ) {
     private val thread = HandlerThread("gl").also { it.start() }
     private val h = Handler(thread.looper)
@@ -40,6 +41,11 @@ class GlBridge(
     private var aTex = 0
     private var uMtx = 0
     private val mtx = FloatArray(16)
+    private val tmp = FloatArray(16)
+    private var logged = false
+    // Y-flip only (GL vs image origin). Ignores any 90-degree buffer rotation SurfaceTexture reports,
+    // so output keeps the same sensor orientation as the direct-to-encoder path.
+    private val flip = floatArrayOf(1f, 0f, 0f, 0f, 0f, -1f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 1f, 0f, 1f)
     private var verts: FloatBuffer? = null
     private var texc: FloatBuffer? = null
     @Volatile private var camSurface: Surface? = null
@@ -133,7 +139,9 @@ class GlBridge(
         try {
             val s = st ?: return
             s.updateTexImage()
-            s.getTransformMatrix(mtx)
+            s.getTransformMatrix(tmp)
+            if (!logged) { logged = true; Log.i("UsbCam", "stMatrix=" + tmp.joinToString(",") { "%.3f".format(it) } + " useMtx=$useMtx") }
+            System.arraycopy(if (useMtx) tmp else flip, 0, mtx, 0, 16)
             GLES20.glViewport(0, 0, outW, outH)
             GLES20.glUseProgram(prog)
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0)

@@ -37,7 +37,7 @@ import java.util.concurrent.TimeUnit
 class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit) {
 
     class Config(var w: Int, var h: Int, var fps: Int, val bitrate: Int, val port: Int, val facing: Int, val cam: String? = null, val zoom: Float = 0f,
-                 val gl: Boolean = false, val tpl: Int = 0, val nostab: Boolean = false, val sw: Int = 0, val sh: Int = 0)
+                 val gl: Boolean = false, val tpl: Int = 0, val nostab: Boolean = false, val sw: Int = 0, val sh: Int = 0, val usemtx: Boolean = false)
     private class Pkt(val data: ByteArray, val key: Boolean)
 
     @Volatile private var running = false
@@ -99,7 +99,7 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
         if (cfg.gl) {
             val src = pickSrc(mgr, target, cfg)
             if (src != null) {
-                val g = GlBridge(input, cfg.w, cfg.h, src.width, src.height)
+                val g = GlBridge(input, cfg.w, cfg.h, src.width, src.height, cfg.usemtx)
                 val cs = g.start()
                 if (cs != null) { gl = g; camSurface = cs; log("GL path: camera ${src.width}x${src.height} -> encoder ${cfg.w}x${cfg.h}") }
                 else { g.release(); log("GL init failed, using direct encoder surface") }

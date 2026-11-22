@@ -71,7 +71,8 @@ class MainActivity : Activity() {
             tpl = i.getIntExtra("tpl", 0),
             nostab = i.getBooleanExtra("nostab", false),
             sw = i.getIntExtra("sw", 0),
-            sh = i.getIntExtra("sh", 0)
+            sh = i.getIntExtra("sh", 0),
+            usemtx = i.getBooleanExtra("usemtx", false)
         )
         val s = Streamer(this) { msg -> runOnUiThread { status(msg) } }
         streamer = s
@@ -79,7 +80,7 @@ class MainActivity : Activity() {
     }
 
     private fun status(msg: String) { last = msg; Log.i("UsbCam", msg); render() }
-    private fun render() { tv.text = "UsbCam m1i\n$last\n\nCameras (use: --es cam <id>):\n$cams\nEncoders:\n$caps" }
+    private fun render() { tv.text = "UsbCam m1j\n$last\n\nCameras (use: --es cam <id>):\n$cams\nEncoders:\n$caps" }
 
     override fun onDestroy() {
         streamer?.stop()
