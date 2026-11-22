@@ -421,10 +421,29 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
         } catch (e: Exception) { log("createCaptureSession: ${e.message}") }
     }
 
+    @Volatile private var afTrigger = false
+
+    /** Runs one autofocus pass (single-AF mode). */
+    fun triggerAf() {
+        camHandler?.post {
+            val s = session ?: return@post
+            afTrigger = true
+            val r = buildReq()
+            afTrigger = false
+            try { if (r != null) s.capture(r, captureCb, camHandler) } catch (e: Exception) { log("triggerAf: ${e.message}") }
+            pushRequest()
+        }
+    }
+
     private fun pushRequest() {
-        val cam = camera ?: return; val s = session ?: return; val cfg = builderCfg ?: return
+        val s = session ?: return
+        try { buildReq()?.let { s.setRepeatingRequest(it, captureCb, camHandler) } } catch (e: Exception) { log("setRepeatingRequest: ${e.message}") }
+    }
+
+    private fun buildReq(): CaptureRequest? {
+        val cam = camera ?: return null; val cfg = builderCfg ?: return null
         try {
-            val b = cam.createCaptureRequest(if (cfg.tpl > 0) cfg.tpl else CameraDevice.TEMPLATE_RECORD).apply {
+            return cam.createCaptureRequest(if (cfg.tpl > 0) cfg.tpl else CameraDevice.TEMPLATE_RECORD).apply {
                 for (o in curOuts) addTarget(o)
                 set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, aeRange ?: Range(cfg.fps, cfg.fps))
                 if (cfg.nostab) set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF)
@@ -433,8 +452,7 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
                 if (cfg.ll >= 1) fastIsp(this, camChars)  // less ISP work per frame, only modes the camera lists
                 ctl?.let { applyCtl(this, it, cfg.fps) }
             }.build()
-            s.setRepeatingRequest(b, captureCb, camHandler)
-        } catch (e: Exception) { log("setRepeatingRequest: ${e.message}") }
+        } catch (e: Exception) { log("buildReq: ${e.message}"); return null }
     }
 
     private fun applyCtl(b: CaptureRequest.Builder, c: CamControls, fps: Int) {
@@ -449,9 +467,15 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
                 b.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, c.ev)
                 if (c.aeLock && c.aeLockOk) b.set(CaptureRequest.CONTROL_AE_LOCK, true)
             }
-            if ((c.manualFocus || c.afLock) && c.minFocus > 0f) {
-                b.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF)
-                b.set(CaptureRequest.LENS_FOCUS_DISTANCE, c.focusDist.coerceIn(0f, c.minFocus))
+            when (c.fm) {
+                CamControls.FM_INF, CamControls.FM_LOCK, CamControls.FM_MANUAL -> if (c.minFocus > 0f) {
+                    b.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF)
+                    b.set(CaptureRequest.LENS_FOCUS_DISTANCE, if (c.fm == CamControls.FM_INF) 0f else c.focusDist.coerceIn(0f, c.minFocus))
+                }
+                CamControls.FM_SINGLE -> {   // one focus run per tap, then it holds
+                    b.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_AUTO)
+                    if (afTrigger) b.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_START)
+                }
             }
             if (c.awbLock) b.set(CaptureRequest.CONTROL_AWB_LOCK, true)
             c.point?.let { p -> region(p, c)?.let { r -> b.set(CaptureRequest.CONTROL_AF_REGIONS, r); b.set(CaptureRequest.CONTROL_AE_REGIONS, r) } }

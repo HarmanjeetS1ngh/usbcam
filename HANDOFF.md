@@ -108,3 +108,4 @@ The user prefers direct, honest feedback, and narrow answers over long lists. Te
 - Controls (`CamControls.kt`, shared, applied in `Streamer.applyCtl`): tap = focus+meter point; long-press = AE/AF LOCK (AE_LOCK + AF_MODE_OFF at the live focus distance); PRO panel: ISO, SPEED (manual AE: AE_MODE_OFF, exposure capped at 1/fps), EV, FOCUS (manual LENS_FOCUS_DISTANCE), WB lock; AUTO button per chip; FLIP camera button. Manual ISO/speed need MANUAL_SENSOR capability; otherwise a toast.
 - MainActivity is no longer forced to landscape (CameraActivity is).
 - Untested risks: encoder+preview stream combination at 4K on some phones; touch-to-sensor mapping assumes upright landscape; AE/AF region math.
+- M5c+: FOCUS chip now has separate modes: AUTO (continuous), SINGLE (AF_MODE_AUTO + AF_TRIGGER_START on tap), INFINITY (AF off, distance 0), LOCK (hold current distance), MANUAL (slider). `CamControls.focusMode`/`fm`; AE/AF lock overrides. Streamer.triggerAf().

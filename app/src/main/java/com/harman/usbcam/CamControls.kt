@@ -7,12 +7,13 @@ import android.hardware.camera2.CameraMetadata
 
 /** Manual camera controls shared by the preview screen (CameraActivity) and the streamer. Survives stream restarts. */
 class CamControls {
+    companion object { const val FM_AUTO = 0; const val FM_SINGLE = 1; const val FM_INF = 2; const val FM_LOCK = 3; const val FM_MANUAL = 4 }
     // user settings
     @Volatile var aeLock = false
     @Volatile var afLock = false
     @Volatile var awbLock = false
     @Volatile var manualExp = false; @Volatile var iso = 100; @Volatile var expNs = 10_000_000L
-    @Volatile var manualFocus = false; @Volatile var focusDist = 0f   // diopters, 0 = infinity
+    @Volatile var focusMode = FM_AUTO; @Volatile var focusDist = 0f   // diopters, 0 = infinity
     @Volatile var ev = 0                                              // exposure-compensation steps
     @Volatile var point: PointF? = null                               // tap point, 0..1 within the picture
 
@@ -30,6 +31,9 @@ class CamControls {
     @Volatile var fps = 30
 
     val locked: Boolean get() = aeLock || afLock
+    /** The focus mode actually in force (an AE/AF lock overrides the chosen mode). */
+    val fm: Int get() = if (afLock) FM_LOCK else focusMode
+    fun setFocusMode(m: Int) { afLock = false; focusMode = m; if (m == FM_LOCK) { afLock = true; focusDist = liveFocus } }
 
     fun load(ch: CameraCharacteristics?, fpsNow: Int) {
         fps = fpsNow
@@ -47,5 +51,5 @@ class CamControls {
 
     fun lockAeAf() { aeLock = true; afLock = true; focusDist = liveFocus }
     fun unlockAeAf() { aeLock = false; afLock = false; point = null }
-    fun reset() { unlockAeAf(); awbLock = false; manualExp = false; manualFocus = false; ev = 0 }
+    fun reset() { unlockAeAf(); awbLock = false; manualExp = false; focusMode = FM_AUTO; ev = 0 }
 }

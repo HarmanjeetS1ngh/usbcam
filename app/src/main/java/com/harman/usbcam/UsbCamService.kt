@@ -53,6 +53,7 @@ class UsbCamService : Service() {
 
     fun setPreview(sf: android.view.Surface?) { previewSurface = sf; synchronized(lock) { streamer?.attachPreview(sf) } }
     fun applyControls() { streamer?.applyControls() }
+    fun triggerAf() { streamer?.triggerAf() }
     fun clientOn(): Boolean = streamer?.clientConnected == true
     fun infoNow(): String = streamer?.infoText ?: ""
     /** Switch between the back and front camera (keeps the saved size; the streamer snaps it if the other camera lacks it). */

@@ -46,6 +46,8 @@ class CameraActivity : Activity() {
     private lateinit var valueTv: TextView
     private lateinit var autoBtn: TextView
     private val chips = LinkedHashMap<String, TextView>()
+    private lateinit var modeRow: LinearLayout
+    private val modeBtns = LinkedHashMap<Int, TextView>()
     private var sel = "ISO"
     private var attached = false
     private val tick = object : Runnable { override fun run() { update(); ui.postDelayed(this, 250) } }
@@ -145,7 +147,17 @@ class CameraActivity : Activity() {
         row.addView(autoBtn, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(10) })
         row.addView(seek, LinearLayout.LayoutParams(0, dp(40), 1f))
         row.addView(valueTv, LinearLayout.LayoutParams(dp(84), -2))
-        panel.addView(chipRow); panel.addView(row)
+        modeRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; visibility = View.GONE; setPadding(0, dp(4), 0, dp(6)) }
+        for ((m, n) in listOf(CamControls.FM_AUTO to "AUTO\ncontinuous", CamControls.FM_SINGLE to "SINGLE\ntap to focus", CamControls.FM_INF to "\u221E\ninfinity",
+                              CamControls.FM_LOCK to "LOCK\nhold focus", CamControls.FM_MANUAL to "MANUAL\nslider")) {
+            val t = label(n, 11f).apply { setPadding(dp(4), dp(6), dp(4), dp(6)); setOnClickListener {
+                val c = ctl() ?: return@setOnClickListener
+                c.setFocusMode(m); if (m == CamControls.FM_MANUAL) c.focusDist = c.liveFocus
+                push(); if (m == CamControls.FM_SINGLE) UsbCamService.instance?.triggerAf()
+                sync(); update() } }
+            modeBtns[m] = t; modeRow.addView(t, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(dp(3), 0, dp(3), 0) })
+        }
+        panel.addView(chipRow); panel.addView(modeRow); panel.addView(row)
         root.addView(panel, FrameLayout.LayoutParams(dp(520), -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(14) })
         sync()
         return root
@@ -170,15 +182,16 @@ class CameraActivity : Activity() {
 
     private fun focusAt(x: Float, y: Float) {
         val c = ctl() ?: return
-        c.unlockAeAf(); c.manualFocus = false
+        c.unlockAeAf(); if (c.focusMode == CamControls.FM_LOCK) c.focusMode = CamControls.FM_AUTO
         c.point = PointF(x / holderLayout.width, y / holderLayout.height)
         showRing(x, y, Color.WHITE); push()
+        if (c.focusMode == CamControls.FM_SINGLE) UsbCamService.instance?.triggerAf()
         ui.postDelayed({ if (!c.locked) ring.visibility = View.GONE }, 1400)
     }
 
     private fun lockAt(x: Float, y: Float) {
         val c = ctl() ?: return
-        c.manualFocus = false; c.point = PointF(x / holderLayout.width, y / holderLayout.height)
+        c.point = PointF(x / holderLayout.width, y / holderLayout.height)
         showRing(x, y, Y); push()
         ui.postDelayed({ c.lockAeAf(); push(); update() }, 700)   // let AF settle on the point first
     }
@@ -209,7 +222,7 @@ class CameraActivity : Activity() {
             "SPEED" -> { if (!c.manualOk) { noManual(); return }; seedManual(c); c.expNs = fromLog(p, expLo(c), expHi(c)).toLong() }
             "EV" -> c.ev = c.evMin + p
             "FOCUS" -> { if (c.minFocus <= 0f) { Toast.makeText(this, "This camera has fixed focus", Toast.LENGTH_SHORT).show(); return }
-                c.manualFocus = true; c.focusDist = c.minFocus * (1f - p / 100f) }
+                c.setFocusMode(CamControls.FM_MANUAL); c.focusDist = c.minFocus * (1f - p / 100f) }
         }
         push(); update()
     }
@@ -221,7 +234,7 @@ class CameraActivity : Activity() {
         when (sel) {
             "ISO", "SPEED" -> c.manualExp = false
             "EV" -> c.ev = 0
-            "FOCUS" -> { c.manualFocus = false; c.afLock = false }
+            "FOCUS" -> c.setFocusMode(CamControls.FM_AUTO)
             "WB" -> c.awbLock = !c.awbLock
         }
         push(); sync(); update()
@@ -232,13 +245,20 @@ class CameraActivity : Activity() {
         val c = ctl()
         for ((n, v) in chips) { v.setTextColor(if (n == sel) Y else Color.WHITE); v.background = if (n == sel) bg(Color.argb(60, 255, 214, 0), 12) else null }
         seek.visibility = if (sel == "WB") View.INVISIBLE else View.VISIBLE
+        modeRow.visibility = if (sel == "FOCUS") View.VISIBLE else View.GONE
+        ctl()?.let { c -> for ((m, t) in modeBtns) { t.setTextColor(if (c.fm == m) Color.BLACK else Color.WHITE); t.background = bg(if (c.fm == m) Y else Color.argb(70, 255, 255, 255), 12) } }
         if (c == null) return
         when (sel) {
             "ISO" -> { seek.max = 100; seek.progress = toLog((if (c.manualExp) c.iso else c.liveIso).toDouble(), c.isoMin.toDouble(), c.isoMax.toDouble()) }
             "SPEED" -> { seek.max = 100; seek.progress = toLog((if (c.manualExp) c.expNs else c.liveExpNs).toDouble(), expLo(c), expHi(c)) }
             "EV" -> { seek.max = Math.max(1, c.evMax - c.evMin); seek.progress = c.ev - c.evMin }
-            "FOCUS" -> { seek.max = 100; seek.progress = if (c.minFocus > 0f) ((1f - (if (c.manualFocus || c.afLock) c.focusDist else c.liveFocus) / c.minFocus) * 100).roundToInt().coerceIn(0, 100) else 100 }
+            "FOCUS" -> { seek.max = 100; seek.progress = if (c.minFocus > 0f) ((1f - (when (c.fm) { CamControls.FM_INF -> 0f; CamControls.FM_MANUAL, CamControls.FM_LOCK -> c.focusDist; else -> c.liveFocus }) / c.minFocus) * 100).roundToInt().coerceIn(0, 100) else 100 }
         }
+    }
+
+    private fun focusName(c: CamControls) = when (c.fm) {
+        CamControls.FM_SINGLE -> "SINGLE"; CamControls.FM_INF -> "\u221E"; CamControls.FM_LOCK -> "LOCKED " + fmtFocus(c.focusDist)
+        CamControls.FM_MANUAL -> fmtFocus(c.focusDist); else -> "AUTO"
     }
 
     private fun fmtExp(ns: Long): String { if (ns <= 0) return "-"; val d = 1e9 / ns; return if (d >= 2) "1/${d.roundToInt()}" else "%.1fs".format(ns / 1e9) }
@@ -259,9 +279,9 @@ class CameraActivity : Activity() {
         chips["ISO"]?.text = "ISO\n" + if (c.manualExp) "${c.iso}" else "AUTO ${c.liveIso}"
         chips["SPEED"]?.text = "SPEED\n" + fmtExp(if (c.manualExp) c.expNs else c.liveExpNs)
         chips["EV"]?.text = "EV\n" + fmtEv(c)
-        chips["FOCUS"]?.text = "FOCUS\n" + if (c.manualFocus || c.afLock) fmtFocus(c.focusDist) else "AUTO"
+        chips["FOCUS"]?.text = "FOCUS\n" + focusName(c)
         chips["WB"]?.text = "WB\n" + if (c.awbLock) "LOCKED" else "AUTO"
-        val manual = when (sel) { "ISO", "SPEED" -> c.manualExp; "EV" -> c.ev != 0; "FOCUS" -> c.manualFocus || c.afLock; else -> c.awbLock }
+        val manual = when (sel) { "ISO", "SPEED" -> c.manualExp; "EV" -> c.ev != 0; "FOCUS" -> c.fm != CamControls.FM_AUTO; else -> c.awbLock }
         autoBtn.text = if (sel == "WB") (if (c.awbLock) "UNLOCK" else "LOCK WB") else "AUTO"
         autoBtn.background = bg(if (sel != "WB" && !manual) Y else Color.argb(90, 255, 255, 255), 14)
         autoBtn.setTextColor(if (sel != "WB" && !manual) Color.BLACK else Color.WHITE)
@@ -269,7 +289,7 @@ class CameraActivity : Activity() {
             "ISO" -> "${if (c.manualExp) c.iso else c.liveIso}"
             "SPEED" -> fmtExp(if (c.manualExp) c.expNs else c.liveExpNs)
             "EV" -> fmtEv(c)
-            "FOCUS" -> if (c.manualFocus || c.afLock) fmtFocus(c.focusDist) else "AUTO"
+            "FOCUS" -> focusName(c)
             else -> if (c.awbLock) "LOCKED" else "AUTO"
         }
         // follow auto values while the user is not dragging
