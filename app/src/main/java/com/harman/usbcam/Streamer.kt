@@ -2,11 +2,11 @@ package com.harman.usbcam
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
-import android.hardware.camera2.CameraMetadata
 import android.hardware.camera2.CaptureRequest
 import android.hardware.camera2.CaptureResult
 import android.hardware.camera2.TotalCaptureResult
@@ -21,6 +21,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.util.Log
 import android.util.Range
+import android.util.Size
 import android.view.Surface
 import java.net.InetAddress
 import java.net.ServerSocket
@@ -35,7 +36,8 @@ import java.util.concurrent.TimeUnit
  */
 class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit) {
 
-    class Config(var w: Int, var h: Int, var fps: Int, val bitrate: Int, val port: Int, val facing: Int, val cam: String? = null, val zoom: Float = 0f, val uc: Boolean = false)
+    class Config(var w: Int, var h: Int, var fps: Int, val bitrate: Int, val port: Int, val facing: Int, val cam: String? = null, val zoom: Float = 0f,
+                 val gl: Boolean = false, val tpl: Int = 0, val nostab: Boolean = false, val sw: Int = 0, val sh: Int = 0)
     private class Pkt(val data: ByteArray, val key: Boolean)
 
     @Volatile private var running = false
@@ -53,6 +55,7 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
     private var codec: MediaCodec? = null
     private var camera: CameraDevice? = null
     private var session: CameraCaptureSession? = null
+    private var gl: GlBridge? = null
     private var camThread: HandlerThread? = null
     private var server: ServerSocket? = null
     private val queue = LinkedBlockingQueue<Pkt>(6) // small on purpose: latency over completeness
@@ -74,11 +77,6 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
         info = "cam ${target.second ?: target.first} ${cfg.w}x${cfg.h}@${cfg.fps}$note"
         log("START $info bitrate=${cfg.bitrate} requestedCam=${cfg.cam} logicalId=${target.first} physicalId=${target.second} aeRange=$aeRange zoom=${cfg.zoom}")
 
-        if (Build.VERSION.SDK_INT >= 33) try {
-            log("streamUseCases=" + mgr.getCameraCharacteristics(target.first)
-                .get(CameraCharacteristics.SCALER_AVAILABLE_STREAM_USE_CASES)?.joinToString(",") + " uc=${cfg.uc}")
-        } catch (_: Exception) {}
-
         val fmt = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, cfg.w, cfg.h).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
             setInteger(MediaFormat.KEY_BIT_RATE, cfg.bitrate)
@@ -97,7 +95,17 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
 
         spawn("drain") { drain(c) }
         spawn("net") { serve(cfg.port, c) }
-        openCamera(mgr, target, cfg, input)
+        var camSurface: Surface = input
+        if (cfg.gl) {
+            val src = pickSrc(mgr, target, cfg)
+            if (src != null) {
+                val g = GlBridge(input, cfg.w, cfg.h, src.width, src.height)
+                val cs = g.start()
+                if (cs != null) { gl = g; camSurface = cs; log("GL path: camera ${src.width}x${src.height} -> encoder ${cfg.w}x${cfg.h}") }
+                else { g.release(); log("GL init failed, using direct encoder surface") }
+            } else log("no SurfaceTexture size >= ${cfg.w}x${cfg.h}, using direct encoder surface")
+        }
+        openCamera(mgr, target, cfg, camSurface)
     }
 
     fun stop() {
@@ -105,6 +113,8 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
         try { server?.close() } catch (_: Exception) {}
         try { session?.stopRepeating(); session?.close() } catch (_: Exception) {}
         try { camera?.close() } catch (_: Exception) {}
+        try { gl?.release() } catch (_: Exception) {}
+        gl = null
         threads.forEach { try { it.join(500) } catch (_: Exception) {} }
         threads.clear()
         try { codec?.stop(); codec?.release() } catch (_: Exception) {}
@@ -202,6 +212,21 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
         } catch (_: Exception) { return "" }
     }
 
+    /** For the GL path: smallest camera SurfaceTexture size (4:3 preferred) that covers the output size. */
+    private fun pickSrc(mgr: CameraManager, target: Pair<String, String?>, cfg: Config): Size? {
+        try {
+            val ch = try { mgr.getCameraCharacteristics(target.second ?: target.first) }
+                     catch (_: Exception) { mgr.getCameraCharacteristics(target.first) }
+            val sizes = ch.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+                ?.getOutputSizes(SurfaceTexture::class.java) ?: return null
+            log("glSizes=" + sizes.sortedByDescending { it.width.toLong() * it.height }.take(8).joinToString(",") { "${it.width}x${it.height}" })
+            if (cfg.sw > 0) return sizes.firstOrNull { it.width == cfg.sw && it.height == cfg.sh }
+            val cover = sizes.filter { it.width >= cfg.w && it.height >= cfg.h }
+            return cover.filter { Math.abs(it.width * 3 - it.height * 4) < 8 }.minByOrNull { it.width.toLong() * it.height }
+                ?: cover.minByOrNull { it.width.toLong() * it.height }
+        } catch (_: Exception) { return null }
+    }
+
     /** Use an AE fps range the camera really offers; if cfg.fps is not offered, take the nearest higher one, else the maximum. */
     private fun pickFps(mgr: CameraManager, logicalId: String, cfg: Config): String {
         aeRange = null
@@ -249,9 +274,10 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
                 val cb = object : CameraCaptureSession.StateCallback() {
                     override fun onConfigured(s: CameraCaptureSession) {
                         session = s
-                        val req = cam.createCaptureRequest(CameraDevice.TEMPLATE_RECORD).apply {
+                        val req = cam.createCaptureRequest(if (cfg.tpl > 0) cfg.tpl else CameraDevice.TEMPLATE_RECORD).apply {
                             addTarget(surface)
                             set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, aeRange ?: Range(cfg.fps, cfg.fps))
+                            if (cfg.nostab) set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF)
                             if (cfg.zoom > 0f && Build.VERSION.SDK_INT >= 30) set(CaptureRequest.CONTROL_ZOOM_RATIO, cfg.zoom)
                             set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO)
                         }.build()
@@ -265,7 +291,7 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
                                     val zoom = if (Build.VERSION.SDK_INT >= 30) res.get(CaptureResult.CONTROL_ZOOM_RATIO) else null
                                     val pr = if (Build.VERSION.SDK_INT >= 28) res.physicalCameraResults.entries
                                         .joinToString(" ") { "${it.key}:${it.value.get(CaptureResult.LENS_FOCAL_LENGTH)}mm" }.ifEmpty { "none" } else "n/a"
-                                    log("cam fps=${"%.1f".format(camFrames / sec)} activePhysical=$ph focalLength=${res.get(CaptureResult.LENS_FOCAL_LENGTH)}mm zoom=$zoom physResults=$pr crop=${res.get(CaptureResult.SCALER_CROP_REGION)}")
+                                    log("cam fps=${"%.1f".format(camFrames / sec)} activePhysical=$ph focalLength=${res.get(CaptureResult.LENS_FOCAL_LENGTH)}mm zoom=$zoom physResults=$pr crop=${res.get(CaptureResult.SCALER_CROP_REGION)} stab=${res.get(CaptureResult.CONTROL_VIDEO_STABILIZATION_MODE)} ois=${res.get(CaptureResult.LENS_OPTICAL_STABILIZATION_MODE)}")
                                     camFrames = 0; camT = now
                                 }
                             }
@@ -275,12 +301,8 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
                         onStatus("Camera session failed: $info unsupported on this camera")
                     }
                 }
-                val useCase = cfg.uc && Build.VERSION.SDK_INT >= 33
-                if ((phys != null || useCase) && Build.VERSION.SDK_INT >= 28) {
-                    val oc = OutputConfiguration(surface).apply {
-                        if (phys != null) setPhysicalCameraId(phys)
-                        if (useCase) setStreamUseCase(CameraMetadata.SCALER_AVAILABLE_STREAM_USE_CASES_VIDEO_RECORD.toLong())
-                    }
+                if (phys != null && Build.VERSION.SDK_INT >= 28) {
+                    val oc = OutputConfiguration(surface).apply { setPhysicalCameraId(phys) }
                     val sc = SessionConfiguration(SessionConfiguration.SESSION_REGULAR, listOf(oc), { r -> h.post(r) }, cb)
                     cam.createCaptureSession(sc)
                 } else {
