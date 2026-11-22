@@ -97,3 +97,8 @@ attached zip fully before doing anything; it holds the goal, fixed decisions and
 Continue from the first unchecked item. Be credit-efficient: no re-explaining decisions, change only
 the files needed (give diffs or single files, not full rewrites), and update HANDOFF.md status when done.
 The user prefers direct, honest feedback, and narrow answers over long lists. Tell me when you finish a milestone and give me the updated zip contents."
+
+## M5b (UI + OBS follow-phone) - WRITTEN, NOT COMPILED/RUN
+- Phone UI (MainActivity.kt) rewritten, dark card layout: live status (coloured dot, plain title), Fast/Balanced/Sharp presets (720/1080/1440 p at 30 fps, auto bitrate), Camera/Resolution/Frame-rate dropdowns with plain labels ("zoomed in"/"untested" notes), "Restart stream with these settings" card appears after any change, Protect-the-phone switch, collapsible Advanced (bitrate, low-latency, reset) and Device info, Quit button. Logic (save/restore/Prefs/ACTION_APPLY) unchanged.
+- OBS plugin (usbcam_obs.cpp): new setting `mode` 0 = Follow the phone (default; sends only hdr:true so the phone uses its saved choice), 1 = Custom. Custom shows dropdowns built from the phone's `caps` reply (camera, resolution, fps, bitrate; low-latency Follow/On/Off), refreshed when camera/resolution change; "Refresh phone info" button; status line shows what the phone is really sending (`actual`). Old scenes with explicit w/h are now in Follow mode until switched to Custom. When the phone applies new settings the video socket drops and the plugin reconnects with the new saved choice.
+- Needs: rebuild APK (setup.ps1) and OBS plugin (build-obs.ps1, OBS closed). Viewer unchanged.
