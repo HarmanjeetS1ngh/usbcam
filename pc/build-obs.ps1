@@ -22,9 +22,12 @@ if ($LASTEXITCODE -ne 0) {
 }
 Remove-Item "$root\obs-plugin" -Recurse -Force -ErrorAction SilentlyContinue
 gh run download $id -n usbcam-obs-plugin -D "$root\obs-plugin"
-$dest = Join-Path $env:APPDATA "obs-studio\plugins\usbcam-obs"
+# OBS 33 only scans C:\ProgramData\obs-studio\plugins (not %APPDATA%); legacy layout = <name>\bin\64bit + <name>\data
+$dest = Join-Path $env:ProgramData "obs-studio\plugins\usbcam-obs"
 Remove-Item $dest -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $dest | Out-Null
 Copy-Item "$root\obs-plugin\usbcam-obs\*" $dest -Recurse -Force
+New-Item -ItemType Directory -Force "$dest\data" | Out-Null
+Remove-Item (Join-Path $env:APPDATA "obs-studio\plugins\usbcam-obs") -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host "Installed to $dest" -ForegroundColor Green
 Write-Host "Now open OBS > Sources > + > 'UsbCam (USB phone camera)'. Phone plugged in and unlocked."

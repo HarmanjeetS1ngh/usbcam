@@ -48,7 +48,7 @@ static int64_t now_us() { return std::chrono::duration_cast<std::chrono::microse
 
 struct Cfg {
     std::string adb = "adb", cam;
-    int w = 0, h = 0, fps = 0, br_mbps = 0, cs = 0;   // 0 = phone default / auto
+    int w = 0, h = 0, fps = 0, br_mbps = 0, cs = 0, ll = 1;   // 0 = phone default / auto
     bool hw = true, keep = false;
 };
 
@@ -242,6 +242,7 @@ static void session(Src* s) {
     if (c.h) st += ",\"h\":" + std::to_string(c.h);
     if (c.fps) st += ",\"fps\":" + std::to_string(c.fps);
     if (c.br_mbps) st += ",\"br\":" + std::to_string(c.br_mbps * 1000000);
+    st += ",\"ll\":" + std::to_string(c.ll);
     st += "}";
     if (!ctl_cmd(ctl, st, r) || r.find("\"ok\":true") == std::string::npos) {
         LOG(LOG_WARNING, "start failed: %s", r.c_str());
@@ -330,7 +331,7 @@ static void read_cfg(Src* s, obs_data_t* d) {
     c.cam = obs_data_get_string(d, "cam");
     c.w = (int)obs_data_get_int(d, "w"); c.h = (int)obs_data_get_int(d, "h");
     c.fps = (int)obs_data_get_int(d, "fps"); c.br_mbps = (int)obs_data_get_int(d, "br");
-    c.cs = (int)obs_data_get_int(d, "cs");
+    c.cs = (int)obs_data_get_int(d, "cs"); c.ll = (int)obs_data_get_int(d, "ll");
     c.hw = obs_data_get_bool(d, "hw"); c.keep = obs_data_get_bool(d, "keep");
 }
 
@@ -360,7 +361,7 @@ static void src_defaults(obs_data_t* d) {
     obs_data_set_default_string(d, "adb", "adb");
     obs_data_set_default_int(d, "w", 0); obs_data_set_default_int(d, "h", 0);
     obs_data_set_default_int(d, "fps", 0); obs_data_set_default_int(d, "br", 0);
-    obs_data_set_default_int(d, "cs", 0);
+    obs_data_set_default_int(d, "cs", 0); obs_data_set_default_int(d, "ll", 1);
     obs_data_set_default_bool(d, "hw", true); obs_data_set_default_bool(d, "keep", false);
 }
 
@@ -377,6 +378,8 @@ static obs_properties_t* src_props(void* p) {
     obs_properties_add_int(pr, "br", "Bitrate Mbit/s (0 = auto)", 0, 200, 1);
     obs_property_t* cs = obs_properties_add_list(pr, "cs", "Colour matrix", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
     obs_property_list_add_int(cs, "Auto", 0); obs_property_list_add_int(cs, "BT.601", 1); obs_property_list_add_int(cs, "BT.709", 2);
+    obs_property_t* ll = obs_properties_add_list(pr, "ll", "Phone low-latency tuning", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+    obs_property_list_add_int(ll, "On", 1); obs_property_list_add_int(ll, "Off (for comparing)", 0);
     obs_properties_add_bool(pr, "hw", "Hardware decoding (D3D11VA)");
     obs_properties_add_bool(pr, "keep", "Stay connected while hidden");
     obs_properties_add_text(pr, "adb", "adb path", OBS_TEXT_DEFAULT);

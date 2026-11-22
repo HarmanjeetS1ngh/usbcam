@@ -47,7 +47,7 @@ using Clock = std::chrono::steady_clock;
 static int64_t now_us() { return std::chrono::duration_cast<std::chrono::microseconds>(Clock::now().time_since_epoch()).count(); }
 static void sleep_ms(int ms) { std::this_thread::sleep_for(std::chrono::milliseconds(ms)); }
 
-struct Cfg { std::string cam; int w = 0, h = 0, fps = 0, br = 0; bool sw = false; int seconds = 0; } g_cfg;
+struct Cfg { std::string cam; int w = 0, h = 0, fps = 0, br = 0; bool sw = false; int seconds = 0; int ll = -1; } g_cfg;
 
 static std::atomic<bool> g_run{true};
 static std::atomic<sock_t> g_vid{(sock_t)SOCK_BAD};
@@ -213,6 +213,7 @@ static void session() {
     if (g_cfg.h) st += ",\"h\":" + std::to_string(g_cfg.h);
     if (g_cfg.fps) st += ",\"fps\":" + std::to_string(g_cfg.fps);
     if (g_cfg.br) st += ",\"br\":" + std::to_string(g_cfg.br);
+    if (g_cfg.ll >= 0) st += ",\"ll\":" + std::to_string(g_cfg.ll);
     st += "}";
     if (!ctl_cmd(ctl, st, r) || r.find("\"ok\":true") == std::string::npos) {
         printf("[error] start failed: %s\n", r.c_str());
@@ -276,7 +277,8 @@ int main(int argc, char** argv) {
         else if (a == "--br") g_cfg.br = atoi(nxt().c_str());
         else if (a == "--sw") g_cfg.sw = true;
         else if (a == "--seconds") g_cfg.seconds = atoi(nxt().c_str());
-        else { printf("usage: usbcam_view [--cam id] [--w n --h n --fps n --br bps] [--sw] [--seconds n]\n"); return 1; }
+        else if (a == "--ll") g_cfg.ll = atoi(nxt().c_str());
+        else { printf("usage: usbcam_view [--cam id] [--w n --h n --fps n --br bps] [--sw] [--seconds n] [--ll 0|1]\n"); return 1; }
     }
 #ifdef _WIN32
     WSADATA wsa; WSAStartup(MAKEWORD(2, 2), &wsa);

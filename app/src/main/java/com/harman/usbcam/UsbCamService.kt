@@ -70,7 +70,8 @@ class UsbCamService : Service() {
                 nostab = intent.getBooleanExtra("nostab", false),
                 sw = intent.getIntExtra("sw", 0), sh = intent.getIntExtra("sh", 0),
                 usemtx = intent.getBooleanExtra("usemtx", false),
-                hdr = intent.getBooleanExtra("hdr", false)
+                hdr = intent.getBooleanExtra("hdr", false),
+                ll = intent.getIntExtra("ll", 1)
             )
             synchronized(lock) { startStream(cfg) }
         }
@@ -175,7 +176,8 @@ class UsbCamService : Service() {
                     port = req.optInt("port", 5000),
                     facing = 1,
                     cam = if (req.has("cam")) req.getString("cam") else d.optString("cam").ifEmpty { null },
-                    hdr = req.optBoolean("hdr", false)
+                    hdr = req.optBoolean("hdr", false),
+                    ll = req.optInt("ll", 1)
                 )
                 startStream(cfg)
                 if (streamer == null) JSONObject().put("ok", false).put("err", status) else merge(ok, state(streamer))

@@ -39,10 +39,10 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
 
     class Config(var w: Int, var h: Int, var fps: Int, val bitrate: Int, val port: Int, val facing: Int, val cam: String? = null, val zoom: Float = 0f,
                  val gl: Boolean = false, val tpl: Int = 0, val nostab: Boolean = false, val sw: Int = 0, val sh: Int = 0, val usemtx: Boolean = false,
-                 val hdr: Boolean = false)
+                 val hdr: Boolean = false, val ll: Int = 1)
 
     /** Pooled frame buffer: [HDR bytes reserved for the wire header][payload]. Reused, so no per-frame allocation. */
-    private class Pkt(var buf: ByteArray) { var len = 0; var pts = 0L; var key = false }
+    private class Pkt(var buf: ByteArray) { var len = 0; var pts = 0L; var key = false; var tq = 0L }
     companion object {
         const val HDR = 13        // [4B payload length][8B pts_us][1B flags], big-endian
         const val F_KEY = 1; const val F_CFG = 2
@@ -55,6 +55,8 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
     private var encFrames = 0
     private var encBytes = 0L
     private var encT = System.nanoTime()
+    private var latSum = 0.0; private var latN = 0          // camera timestamp -> encoder output (ms)
+    private val sendUs = java.util.concurrent.atomic.AtomicLong(); private val sendN = java.util.concurrent.atomic.AtomicLong() // dequeue -> socket write done
     private var camFrames = 0
     private var camT = System.nanoTime()
     private fun log(m: String) { Log.i("UsbCam", m) }
@@ -92,7 +94,7 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
         info = "cam ${target.second ?: target.first} ${cfg.w}x${cfg.h}@${cfg.fps}$note"
         log("START $info bitrate=${cfg.bitrate} requestedCam=${cfg.cam} logicalId=${target.first} physicalId=${target.second} aeRange=$aeRange zoom=${cfg.zoom}")
 
-        val fmt = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, cfg.w, cfg.h).apply {
+        fun buildFmt(ll: Int) = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, cfg.w, cfg.h).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
             setInteger(MediaFormat.KEY_BIT_RATE, cfg.bitrate)
             setInteger(MediaFormat.KEY_FRAME_RATE, cfg.fps)
@@ -101,9 +103,24 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
             setInteger(MediaFormat.KEY_PRIORITY, 0) // realtime
             if (Build.VERSION.SDK_INT >= 30) setInteger(MediaFormat.KEY_LATENCY, 1)
             setInteger("prepend-sps-pps-to-idr-frames", 1)
+            if (ll >= 1) {  // low-latency tuning (cfg.ll = 0 turns it off for A/B tests)
+                if (Build.VERSION.SDK_INT >= 29) setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0)
+                setInteger(MediaFormat.KEY_OPERATING_RATE, cfg.fps)
+                setInteger("vendor.qti-ext-enc-low-latency.enable", 1)   // Qualcomm (ignored elsewhere)
+                setInteger("vendor.rtc-ext-enc-low-latency.enable", 1)   // Exynos (ignored elsewhere)
+            }
         }
-        val c = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
-        c.configure(fmt, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+        var c = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+        var llUsed = cfg.ll
+        try { c.configure(buildFmt(cfg.ll), null, null, MediaCodec.CONFIGURE_FLAG_ENCODE) }
+        catch (e: Exception) {
+            log("configure with low-latency options failed (${e.message}), retrying plain")
+            try { c.release() } catch (_: Exception) {}
+            c = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+            llUsed = 0
+            c.configure(buildFmt(0), null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+        }
+        log("encoder ${c.name} ll=$llUsed")
         val input = c.createInputSurface()
         c.start()
         codec = c
@@ -168,11 +185,13 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
             if (buf != null && info.size > 0) {
                 encFrames++; encBytes += info.size
                 val now = System.nanoTime()
+                if (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG == 0) { latSum += (now / 1000 - info.presentationTimeUs) / 1000.0; latN++ }
                 if (now - encT > 2_000_000_000L) {
                     val sec = (now - encT) / 1e9
                     encFpsNow = (encFrames / sec).toFloat(); encMbpsNow = (encBytes * 8 / sec / 1e6).toFloat()
-                    log("enc fps=${"%.1f".format(encFpsNow)} Mbps=${"%.1f".format(encMbpsNow)} drops=$drops")
-                    encFrames = 0; encBytes = 0; encT = now
+                    val sn = sendN.getAndSet(0); val su = sendUs.getAndSet(0)
+                    log("enc fps=${"%.1f".format(encFpsNow)} Mbps=${"%.1f".format(encMbpsNow)} drops=$drops camToEnc=${"%.1f".format(if (latN > 0) latSum / latN else 0.0)}ms queueSend=${"%.2f".format(if (sn > 0) su / 1000.0 / sn else 0.0)}ms")
+                    encFrames = 0; encBytes = 0; encT = now; latSum = 0.0; latN = 0
                 }
                 buf.position(info.offset); buf.limit(info.offset + info.size)
                 if (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) {
@@ -183,7 +202,7 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
                     else {
                         if (p.buf.size < HDR + info.size) p.buf = ByteArray((HDR + info.size) * 3 / 2)
                         buf.get(p.buf, HDR, info.size)
-                        p.len = info.size; p.pts = info.presentationTimeUs
+                        p.len = info.size; p.pts = info.presentationTimeUs; p.tq = now
                         p.key = info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME != 0
                         // Consumer too slow (or nobody connected): drop everything, resume at next keyframe.
                         if (!queue.offer(p)) { recycle(p); dropAll(c) }
@@ -240,6 +259,7 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
                     putHeader(p.buf, p.len, p.pts, if (p.key) F_KEY else 0)
                     out.write(p.buf, 0, HDR + p.len)
                 } else out.write(p.buf, HDR, p.len)
+                sendUs.addAndGet((System.nanoTime() - p.tq) / 1000); sendN.incrementAndGet()
             } finally { recycle(p) }
         }
     }
@@ -312,8 +332,25 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
     }
 
     @SuppressLint("MissingPermission")
+    /** Ask for the cheaper (FAST) ISP modes, but only those the camera says it supports. */
+    private fun fastIsp(b: CaptureRequest.Builder, ch: CameraCharacteristics?) {
+        if (ch == null) return
+        fun has(a: IntArray?, v: Int) = a?.contains(v) == true
+        try {
+            if (has(ch.get(CameraCharacteristics.NOISE_REDUCTION_AVAILABLE_NOISE_REDUCTION_MODES), CaptureRequest.NOISE_REDUCTION_MODE_FAST))
+                b.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_FAST)
+            if (has(ch.get(CameraCharacteristics.EDGE_AVAILABLE_EDGE_MODES), CaptureRequest.EDGE_MODE_FAST))
+                b.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_FAST)
+            if (has(ch.get(CameraCharacteristics.HOT_PIXEL_AVAILABLE_HOT_PIXEL_MODES), CaptureRequest.HOT_PIXEL_MODE_FAST))
+                b.set(CaptureRequest.HOT_PIXEL_MODE, CaptureRequest.HOT_PIXEL_MODE_FAST)
+            if (has(ch.get(CameraCharacteristics.COLOR_CORRECTION_AVAILABLE_ABERRATION_MODES), CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_FAST))
+                b.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_FAST)
+        } catch (_: Exception) {}
+    }
+
     private fun openCamera(mgr: CameraManager, target: Pair<String, String?>, cfg: Config, surface: Surface) {
         val (id, phys) = target
+        val chars: CameraCharacteristics? = try { mgr.getCameraCharacteristics(id) } catch (_: Exception) { null }
         val t = HandlerThread("cam").also { it.start() }
         camThread = t
         val h = Handler(t.looper)
@@ -330,6 +367,7 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
                             if (cfg.nostab) set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF)
                             if (cfg.zoom > 0f && Build.VERSION.SDK_INT >= 30) set(CaptureRequest.CONTROL_ZOOM_RATIO, cfg.zoom)
                             set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO)
+                            if (cfg.ll >= 1) fastIsp(this, chars)  // less ISP work per frame, only modes the camera lists
                         }.build()
                         s.setRepeatingRequest(req, object : CameraCaptureSession.CaptureCallback() {
                             override fun onCaptureCompleted(sess: CameraCaptureSession, r: CaptureRequest, res: TotalCaptureResult) {
