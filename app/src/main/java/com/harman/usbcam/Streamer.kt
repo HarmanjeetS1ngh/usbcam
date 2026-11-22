@@ -177,7 +177,7 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
                 buf.position(info.offset); buf.limit(info.offset + info.size)
                 if (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) {
                     codecConfig = ByteArray(info.size).also { buf.get(it) }
-                } else {
+                } else if (clientConnected) { // nobody listening: don't copy/queue (avoids useless drops + keyframe requests)
                     val p = pool.poll()
                     if (p == null) dropAll(c) // all buffers in flight: consumer too slow
                     else {

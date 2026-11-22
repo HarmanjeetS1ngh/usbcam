@@ -16,13 +16,13 @@ import org.json.JSONObject
  * Camera2 cannot report whether a big size is a sensor crop, so >1080p is labelled from a measured-device table.
  */
 object Caps {
-    /** Models where >1080p was MEASURED as a ~2x centre crop (S22: HANDOFF m1j). Add models here when measured. */
-    private val CROP_MODELS = listOf("SM-S901")
+    /** Model prefix -> camera ids where >1080p was MEASURED as a ~2x centre crop (S22 main: HANDOFF m1j). Add when measured. */
+    private val CROP_MODELS = mapOf("SM-S901" to setOf("0", "5"))
     private val FPS_OK = setOf(24, 25, 30, 50, 60)
 
-    fun cropNote(w: Int): String = when {
+    fun cropNote(w: Int, camId: String): String = when {
         w <= 1920 -> ""
-        CROP_MODELS.any { Build.MODEL.startsWith(it) } -> "cropped"
+        CROP_MODELS.any { (m, ids) -> Build.MODEL.startsWith(m) && camId in ids } -> "cropped"
         else -> "unverified"
     }
 
@@ -41,7 +41,7 @@ object Caps {
         return (w.toLong() * h * fps / 5).coerceIn(2_000_000L, minOf(100_000_000L, max)).toInt()
     }
 
-    private fun modes(ch: CameraCharacteristics, vc: MediaCodecInfo.VideoCapabilities?): JSONArray {
+    private fun modes(camId: String, ch: CameraCharacteristics, vc: MediaCodecInfo.VideoCapabilities?): JSONArray {
         val out = JSONArray()
         val map = ch.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP) ?: return out
         val ae = ch.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)?.map { it.upper }?.toSet() ?: setOf(30)
@@ -56,10 +56,10 @@ object Caps {
                 if (fps.isEmpty()) continue
                 out.put(JSONObject()
                     .put("w", s.width).put("h", s.height)
-                    .put("label", if (s.height >= 2160) "4K" else "${s.height}p")
+                    .put("label", if (s.height >= 2160) "4K" else if (s.height in setOf(720, 1080, 1440)) "${s.height}p" else "${s.width}x${s.height}")
                     .put("fps", JSONArray(fps))
                     .put("br", bitrate(s.width, s.height, fps[0]))
-                    .put("note", cropNote(s.width)))
+                    .put("note", cropNote(s.width, camId)))
             } catch (_: Exception) { /* size/fps not queryable: skip it */ }
         }
         return out
@@ -68,7 +68,7 @@ object Caps {
     private fun camJson(id: String, ch: CameraCharacteristics, vc: MediaCodecInfo.VideoCapabilities?): JSONObject {
         val face = when (ch.get(CameraCharacteristics.LENS_FACING)) { 0 -> "front"; 1 -> "back"; else -> "ext" }
         val focal = ch.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)?.firstOrNull()?.toDouble() ?: 0.0
-        return JSONObject().put("id", id).put("facing", face).put("focal", focal).put("modes", modes(ch, vc))
+        return JSONObject().put("id", id).put("facing", face).put("focal", focal).put("modes", modes(id, ch, vc))
     }
 
     fun build(ctx: Context): JSONObject {

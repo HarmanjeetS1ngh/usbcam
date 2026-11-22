@@ -1,0 +1,44 @@
+--------- beginning of main
+11-22 17:00:48.253 I/UsbCam  (12379): Idle | control on port 5002
+11-22 17:00:48.256 I/UsbCam  (12379): START cam 0 1920x1080@30 bitrate=12000000 requestedCam=0 logicalId=0 physicalId=null aeRange=[30, 30] zoom=0.0
+11-22 17:00:48.312 I/UsbCam  (12379): Waiting for PC on port 5000 | cam 0 1920x1080@30
+11-22 17:00:48.809 I/UsbCam  (12379): encoder format: {max-bitrate=12000000, crop-right=1919, mime=video/avc, profile=8, bitrate=12000000, priority=0, intra-refresh-period=0, color-standard=2, feature-secure-playback=0, csd-1=java.nio.HeapByteBuffer[pos=0 lim=9 cap=9], color-transfer=3, crop-bottom=1079, vendor.qti-ext-enc-content-adaptive-mode.value=0, prepend-sps-pps-to-idr-frames=1, video-qp-average=0, crop-left=0, width=1920, bitrate-mode=2, color-range=1, crop-top=0, frame-rate=30, height=1080, csd-0=java.nio.HeapByteBuffer[pos=0 lim=23 cap=23]}
+11-22 17:00:50.277 I/UsbCam  (12379): cam fps=21.8 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060) stab=0 ois=1
+11-22 17:00:50.288 I/UsbCam  (12379): enc fps=22.1 Mbps=9.3 drops=6
+11-22 17:00:50.923 I/UsbCam  (12379): PC connected, streaming | cam 0 1920x1080@30
+11-22 17:00:52.284 I/UsbCam  (12379): cam fps=29.9 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060) stab=0 ois=1
+11-22 17:00:52.294 I/UsbCam  (12379): enc fps=29.9 Mbps=11.6 drops=9
+11-22 17:00:54.321 I/UsbCam  (12379): cam fps=29.4 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060) stab=0 ois=1
+11-22 17:00:54.329 I/UsbCam  (12379): enc fps=29.5 Mbps=11.5 drops=9
+11-22 17:00:56.347 I/UsbCam  (12379): cam fps=30.1 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060) stab=0 ois=1
+11-22 17:00:56.361 I/UsbCam  (12379): enc fps=30.0 Mbps=11.7 drops=9
+11-22 17:00:58.355 I/UsbCam  (12379): cam fps=29.9 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060) stab=0 ois=1
+11-22 17:00:58.365 I/UsbCam  (12379): enc fps=29.9 Mbps=11.9 drops=9
+11-22 17:01:00.362 I/UsbCam  (12379): cam fps=29.9 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060) stab=0 ois=1
+11-22 17:01:00.371 I/UsbCam  (12379): enc fps=29.9 Mbps=12.0 drops=9
+11-22 17:01:02.383 I/UsbCam  (12379): cam fps=30.2 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060) stab=0 ois=1
+11-22 17:01:02.394 I/UsbCam  (12379): enc fps=30.2 Mbps=11.9 drops=9
+11-22 17:01:04.392 I/UsbCam  (12379): cam fps=29.9 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060) stab=0 ois=1
+11-22 17:01:04.406 I/UsbCam  (12379): enc fps=29.8 Mbps=12.2 drops=9
+11-22 17:01:06.417 I/UsbCam  (12379): cam fps=30.1 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060) stab=0 ois=1
+11-22 17:01:06.428 I/UsbCam  (12379): enc fps=30.2 Mbps=12.1 drops=9
+11-22 17:01:08.418 I/UsbCam  (12379): cam fps=30.0 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060) stab=0 ois=1
+11-22 17:01:08.429 I/UsbCam  (12379): enc fps=30.0 Mbps=12.2 drops=9
+11-22 17:01:10.455 I/UsbCam  (12379): cam fps=30.0 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060) stab=0 ois=1
+11-22 17:01:10.468 I/UsbCam  (12379): enc fps=29.9 Mbps=11.2 drops=9
+11-22 17:01:12.499 I/UsbCam  (12379): cam fps=29.8 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060) stab=0 ois=1
+11-22 17:01:12.509 I/UsbCam  (12379): enc fps=29.9 Mbps=12.1 drops=9
+11-22 17:01:14.517 I/UsbCam  (12379): cam fps=30.2 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060) stab=0 ois=1
+11-22 17:01:14.530 I/UsbCam  (12379): enc fps=30.2 Mbps=11.8 drops=9
+11-22 17:01:16.529 I/UsbCam  (12379): cam fps=29.8 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060) stab=0 ois=1
+11-22 17:01:16.545 I/UsbCam  (12379): enc fps=29.8 Mbps=12.1 drops=9
+11-22 17:01:18.553 I/UsbCam  (12379): cam fps=30.1 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060) stab=0 ois=1
+11-22 17:01:18.563 I/UsbCam  (12379): enc fps=30.2 Mbps=12.0 drops=9
+11-22 17:01:20.556 I/UsbCam  (12379): cam fps=29.9 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060) stab=0 ois=1
+11-22 17:01:20.565 I/UsbCam  (12379): enc fps=30.0 Mbps=12.0 drops=9
+11-22 17:01:22.595 I/UsbCam  (12379): cam fps=29.9 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060) stab=0 ois=1
+11-22 17:01:22.602 I/UsbCam  (12379): enc fps=30.0 Mbps=11.8 drops=9
+11-22 17:01:24.618 I/UsbCam  (12379): cam fps=30.1 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060) stab=0 ois=1
+11-22 17:01:24.628 I/UsbCam  (12379): enc fps=30.1 Mbps=12.0 drops=9
+11-22 17:01:26.629 I/UsbCam  (12379): cam fps=29.8 activePhysical=5 focalLength=5.4mm zoom=1.0 physResults=none crop=Rect(0, 0 - 4080, 3060) stab=0 ois=1
+11-22 17:01:26.637 I/UsbCam  (12379): enc fps=29.9 Mbps=11.7 drops=9
