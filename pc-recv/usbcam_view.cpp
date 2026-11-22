@@ -52,7 +52,9 @@ struct Cfg { std::string cam; int w = 0, h = 0, fps = 0, br = 0; bool sw = false
 static std::atomic<bool> g_run{true};
 static std::atomic<sock_t> g_vid{(sock_t)SOCK_BAD};
 static std::atomic<int64_t> g_off{0};          // pc_us = phone_us + g_off
-static std::atomic<bool> g_off_ok{false};
+static std::atomic<int64_t> g_off2{0};         // same, for the phone's monotonic clock (mono_us)
+static std::atomic<bool> g_off_ok{false}, g_off2_ok{false};
+static std::atomic<int> g_dom{0};              // pts clock domain: 0 unknown, 1 elapsedRealtime, 2 monotonic, 3 neither fits
 static std::mutex g_mu;                        // guards the latest-frame slot + status
 static std::condition_variable g_cv;
 static AVFrame* g_latest = nullptr;
@@ -194,14 +196,15 @@ static void session() {
     if (ctl == SOCK_BAD) { set_status("cannot reach the UsbCam app (is it installed? open it once)"); return; }
 
     // clock sync: phone `time` vs our clock, keep the smallest round trip
-    int64_t best = INT64_MAX, off = 0;
+    int64_t best = INT64_MAX, off = 0, off2 = 0; bool has2 = false;
     for (int i = 0; i < 6; i++) {
         int64_t t0 = now_us();
         if (!ctl_cmd(ctl, "{\"cmd\":\"time\"}", r)) break;
         int64_t t1 = now_us(), p = json_int(r, "\"t_us\":");
-        if (p && t1 - t0 < best) { best = t1 - t0; off = (t0 + t1) / 2 - p; }
+        int64_t pm = json_int(r, "\"mono_us\":");
+        if (p && t1 - t0 < best) { best = t1 - t0; off = (t0 + t1) / 2 - p; if (pm) { off2 = (t0 + t1) / 2 - pm; has2 = true; } }
     }
-    g_off = off; g_off_ok = best != INT64_MAX;
+    g_off = off; g_off_ok = best != INT64_MAX; g_off2 = off2; g_off2_ok = has2; g_dom = 0;
     if (g_off_ok) printf("[sync] control round trip %.1f ms\n", best / 1000.0);
 
     std::string st = "{\"cmd\":\"start\",\"hdr\":true";
@@ -321,7 +324,17 @@ int main(int argc, char** argv) {
                 else SDL_UpdateYUVTexture(tex, nullptr, show->data[0], show->linesize[0], show->data[1], show->linesize[1], show->data[2], show->linesize[2]);
                 SDL_RenderClear(ren); SDL_RenderCopy(ren, tex, nullptr, nullptr); SDL_RenderPresent(ren);
                 shown++;
-                if (g_off_ok) { lat_last = (now_us() - (pts + g_off.load())) / 1000.0; lat_sum += lat_last; lat_n++; }
+                if (g_off_ok) {
+                    int64_t n = now_us();
+                    double lb = (n - (pts + g_off.load())) / 1000.0;
+                    double lm = g_off2_ok ? (n - (pts + g_off2.load())) / 1000.0 : -1e9;
+                    if (g_dom == 0) {  // first frame decides which phone clock the timestamps use
+                        if (lm > -50 && lm < 3000) g_dom = 2; else if (lb > -50 && lb < 3000) g_dom = 1; else g_dom = 3;
+                        printf("[clock] frame timestamps use the phone's %s clock (elapsedRealtime-based %.0f ms, monotonic-based %.0f ms)\n",
+                               g_dom == 2 ? "monotonic" : g_dom == 1 ? "elapsedRealtime" : "UNKNOWN", lb, lm);
+                    }
+                    if (g_dom == 1 || g_dom == 2) { lat_last = g_dom == 2 ? lm : lb; lat_sum += lat_last; lat_n++; }
+                }
             }
         }
         int64_t now = now_us();

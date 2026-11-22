@@ -160,7 +160,7 @@ class UsbCamService : Service() {
                 .put("state", if (streamer == null) "idle" else "streaming")
             "caps" -> ok.put("caps", caps)
             "status" -> merge(ok, state(streamer))
-            "time" -> ok.put("t_us", SystemClock.elapsedRealtimeNanos() / 1000) // same clock family as frame pts on most devices
+            "time" -> ok.put("t_us", SystemClock.elapsedRealtimeNanos() / 1000).put("mono_us", System.nanoTime() / 1000) // frame pts is one of these two clocks (PC picks the one that fits)
             "keyframe" -> { streamer?.keyframe(); ok }
             "bitrate" -> { streamer?.setBitrate(req.getInt("bps")); ok }
             "stop" -> { stopStream(); ok }
