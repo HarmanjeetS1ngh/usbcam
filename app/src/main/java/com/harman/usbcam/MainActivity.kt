@@ -1,39 +1,61 @@
 package com.harman.usbcam
 
 import android.Manifest
-import android.app.Activity
+import android.content.DialogInterface
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Color
-import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
-import android.view.Gravity
-import android.widget.Switch
-import android.widget.Toast
+import android.content.res.ColorStateList
+import android.graphics.Rect
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.view.View
 import android.view.WindowManager
-import android.widget.AdapterView
 import android.widget.ArrayAdapter
-import android.widget.Button
-import android.widget.LinearLayout
-import android.widget.ScrollView
-import android.widget.Spinner
+import android.widget.Filter
+import android.widget.ImageView
 import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.view.ViewCompat
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.button.MaterialButtonToggleGroup
+import com.google.android.material.card.MaterialCardView
+import com.google.android.material.chip.Chip
+import com.google.android.material.color.DynamicColors
+import com.google.android.material.color.MaterialColors
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
+import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.materialswitch.MaterialSwitch
+import com.google.android.material.snackbar.Snackbar
+import com.google.android.material.textfield.MaterialAutoCompleteTextView
 import org.json.JSONArray
 import org.json.JSONObject
+import com.google.android.material.R as MR
 
 /**
- * Phone screen: choose camera, resolution, frame rate and bitrate. The choice is saved and is what the PC viewer / OBS source
- * get when they ask for the default (width/height 0). Starts UsbCamService (camera, encoder, control channel).
- * Intent extras are still forwarded to the service, so `run.bat` keeps working:
+ * Phone screen (Material 3): status, camera on/off, quality presets, camera / size / frame rate, advanced and device info.
+ * The choice is saved in [Prefs] and is what the PC viewer / OBS source get when they ask for the default.
+ * Starts UsbCamService. Intent extras are still forwarded to the service, so `run.bat` keeps working:
  *   adb shell am start -n com.harman.usbcam/.MainActivity --ei w 1920 --ei h 1080 --ei fps 30 --ei br 12000000 [--es cam <id>] [--ez hdr true]
  */
-class MainActivity : Activity() {
+class MainActivity : AppCompatActivity() {
     private class CamEntry(val id: String, val label: String, val modes: JSONArray)
+
+    /** Drop-down adapter that always shows every item (the default one filters by the text in the field). */
+    private class AllItemsAdapter(ctx: android.content.Context, private val src: List<String>) :
+        ArrayAdapter<String>(ctx, R.layout.item_dropdown, src) {
+        override fun getFilter(): Filter = object : Filter() {
+            override fun performFiltering(c: CharSequence?): FilterResults = FilterResults().apply { values = src; count = src.size }
+            override fun publishResults(c: CharSequence?, r: FilterResults?) { notifyDataSetChanged() }
+        }
+    }
+
+    private class UiState(val title: Int, val text: Int, val icon: Int, val bg: Int, val fg: Int, val action: Int)
 
     private var capsJson: JSONObject? = null
     private val cams = ArrayList<CamEntry>()
@@ -42,41 +64,73 @@ class MainActivity : Activity() {
     private var fpsIdx = 0
     private var brIdx = 0
     private val brOptions = intArrayOf(0, 4, 6, 8, 12, 16, 20, 30, 40, 60) // Mbit/s, 0 = automatic
-
-    private lateinit var statusTv: TextView
-    private lateinit var guardTv: TextView
-    private lateinit var hintTv: TextView
-    private lateinit var dot: View
-    private lateinit var titleTv: TextView
-    private lateinit var summaryTv: TextView
-    private lateinit var applyCard: LinearLayout
-    private val presetBtns = ArrayList<Button>()
     private var dirty = false
-    private lateinit var spCam: Spinner
-    private lateinit var spMode: Spinner
-    private lateinit var spFps: Spinner
-    private lateinit var spBr: Spinner
-    private lateinit var cbLl: Switch
-    private lateinit var cbGuard: Switch
-    private lateinit var swCam: Switch
     private var syncing = false
+    private var advOpen = false
+    private var infoOpen = false
+    private var pending: Snackbar? = null
+    private var action = 0 // what the status-card button does: 1 = open app settings, 2 = try again
+
+    private lateinit var coord: View
+    private lateinit var fab: ExtendedFloatingActionButton
+    private lateinit var statusCard: MaterialCardView
+    private lateinit var statusIcon: ImageView
+    private lateinit var statusTitle: TextView
+    private lateinit var statusText: TextView
+    private lateinit var chipBattery: Chip
+    private lateinit var chipTemp: Chip
+    private lateinit var statusAction: MaterialButton
+    private lateinit var swCam: MaterialSwitch
+    private lateinit var camSupport: TextView
+    private lateinit var presetGroup: MaterialButtonToggleGroup
+    private lateinit var summaryTv: TextView
+    private lateinit var ddCam: MaterialAutoCompleteTextView
+    private lateinit var ddRes: MaterialAutoCompleteTextView
+    private lateinit var ddFps: MaterialAutoCompleteTextView
+    private lateinit var ddBr: MaterialAutoCompleteTextView
+    private lateinit var chipZoomed: Chip
+    private lateinit var chipUntested: Chip
+    private lateinit var swGuard: MaterialSwitch
+    private lateinit var swLl: MaterialSwitch
+    private lateinit var swDyn: MaterialSwitch
+    private lateinit var infoHeader: View
+    private lateinit var infoBody: View
+    private lateinit var infoText: TextView
 
     private val ui = Handler(Looper.getMainLooper())
     private val tick = object : Runnable { override fun run() { refreshStatus(); ui.postDelayed(this, 1000) } }
 
+    companion object {
+        @Volatile private var capsCache: JSONObject? = null
+    }
+
     override fun onCreate(b: Bundle?) {
+        AppCompatDelegate.setDefaultNightMode(UiPrefs.nightMode(this))
+        if (UiPrefs.isDynamic(this)) DynamicColors.applyToActivityIfAvailable(this)
         super.onCreate(b)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        capsJson = try { Caps.build(this) } catch (_: Exception) { null }
+        setContentView(R.layout.activity_main)
+        if (b != null) { dirty = b.getBoolean("dirty"); advOpen = b.getBoolean("adv"); infoOpen = b.getBoolean("info") }
+
+        capsJson = capsCache ?: (try { Caps.build(this) } catch (_: Exception) { null }).also { capsCache = it }
         buildCams()
         restoreSelection()
-        setContentView(buildUi())
+        bindViews()
+        wireViews()
         fillCam(); fillModes(); fillFps(); fillBr()
-        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            val p = if (Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.CAMERA, Manifest.permission.POST_NOTIFICATIONS)
-                    else arrayOf(Manifest.permission.CAMERA)
-            requestPermissions(p, 1)
-        } else launch()
+
+        if (b == null) { // not after a rotation: the service is already running and must not get the launch extras again
+            if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                val p = if (Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.CAMERA, Manifest.permission.POST_NOTIFICATIONS)
+                        else arrayOf(Manifest.permission.CAMERA)
+                requestPermissions(p, 1)
+            } else launch()
+        }
+    }
+
+    override fun onSaveInstanceState(o: Bundle) {
+        super.onSaveInstanceState(o)
+        o.putBoolean("dirty", dirty); o.putBoolean("adv", advOpen); o.putBoolean("info", infoOpen)
     }
 
     override fun onNewIntent(i: Intent) {
@@ -86,30 +140,41 @@ class MainActivity : Activity() {
     }
 
     override fun onRequestPermissionsResult(rc: Int, p: Array<out String>, r: IntArray) {
+        super.onRequestPermissionsResult(rc, p, r)
         if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) launch()
-        else { UsbCamService.status = "Camera permission denied"; refreshStatus() }
+        refreshStatus()
     }
 
     private fun launch() {
         startForegroundService(Intent(this, UsbCamService::class.java).setAction(UsbCamService.ACTION_START).putExtras(intent))
     }
 
-    override fun onResume() { super.onResume(); ui.post(tick) }
+    override fun onResume() {
+        super.onResume(); ui.post(tick)
+        if (dirty) showPending()
+    }
     override fun onPause() { ui.removeCallbacks(tick); super.onPause() }
 
-    // ---- data ----
+    // ---- data (unchanged logic) ----
+
+    private fun facingName(f: String): String = when (f) {
+        "back" -> getString(R.string.facing_back)
+        "front" -> getString(R.string.facing_front)
+        else -> f.replaceFirstChar { it.uppercase() }
+    }
 
     private fun buildCams() {
         val arr = capsJson?.optJSONArray("cameras") ?: return
         for (i in 0 until arr.length()) {
             val c = arr.getJSONObject(i)
             val modes = c.getJSONArray("modes")
-            if (modes.length() > 0) cams.add(CamEntry(c.getString("id"), "${c.getString("facing").replaceFirstChar { it.uppercase() }} camera (id ${c.getString("id")})", modes))
+            val face = facingName(c.getString("facing"))
+            if (modes.length() > 0) cams.add(CamEntry(c.getString("id"), getString(R.string.cam_label, face, c.getString("id")), modes))
             val ph = c.optJSONArray("phys") ?: continue
             for (k in 0 until ph.length()) {
                 val pc = ph.getJSONObject(k)
                 val pm = pc.getJSONArray("modes")
-                if (pm.length() > 0) cams.add(CamEntry(pc.getString("id"), "   ${c.getString("facing").replaceFirstChar { it.uppercase() }} lens ${"%.1f".format(pc.getDouble("focal"))} mm (id ${pc.getString("id")})", pm))
+                if (pm.length() > 0) cams.add(CamEntry(pc.getString("id"), "   " + getString(R.string.lens_label, face, "%.1f".format(pc.getDouble("focal")), pc.getString("id")), pm))
             }
         }
     }
@@ -143,150 +208,180 @@ class MainActivity : Activity() {
         p.cam = c.id; p.w = m.getInt("w"); p.h = m.getInt("h")
         p.fps = fpsList().getOrElse(fpsIdx) { 30 }
         p.br = brOptions[brIdx] * 1_000_000
-        p.ll = if (cbLl.isChecked) 1 else 0
-        p.guard = cbGuard.isChecked
+        p.ll = if (swLl.isChecked) 1 else 0
+        p.guard = swGuard.isChecked
     }
 
-    // ---- UI ----
+    // ---- views ----
 
-    private val BG = Color.rgb(15, 17, 21); private val CARD = Color.rgb(26, 29, 36); private val TXT = Color.rgb(242, 244, 248)
-    private val SUB = Color.rgb(154, 163, 178); private val ACC = Color.rgb(76, 141, 255); private val OKC = Color.rgb(61, 220, 132)
-    private val WARN = Color.rgb(255, 183, 77); private val BAD = Color.rgb(255, 92, 92)
-
-    private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
-
-    private fun shape(fill: Int, r: Int = 16, stroke: Int = 0) = GradientDrawable().apply {
-        setColor(fill); cornerRadius = dp(r).toFloat(); if (stroke != 0) setStroke(dp(1), stroke)
+    private fun bindViews() {
+        coord = findViewById(R.id.coord)
+        fab = findViewById(R.id.fab_preview)
+        statusCard = findViewById(R.id.status_card)
+        statusIcon = findViewById(R.id.status_icon)
+        statusTitle = findViewById(R.id.status_title)
+        statusText = findViewById(R.id.status_text)
+        chipBattery = findViewById(R.id.chip_battery)
+        chipTemp = findViewById(R.id.chip_temp)
+        statusAction = findViewById(R.id.status_action)
+        swCam = findViewById(R.id.sw_cam)
+        camSupport = findViewById(R.id.cam_support)
+        presetGroup = findViewById(R.id.preset_group)
+        summaryTv = findViewById(R.id.preset_summary)
+        ddCam = findViewById(R.id.dd_cam); ddRes = findViewById(R.id.dd_res); ddFps = findViewById(R.id.dd_fps); ddBr = findViewById(R.id.dd_br)
+        chipZoomed = findViewById(R.id.chip_zoomed); chipUntested = findViewById(R.id.chip_untested)
+        swGuard = findViewById(R.id.sw_guard); swLl = findViewById(R.id.sw_ll); swDyn = findViewById(R.id.sw_dyn)
+        infoHeader = findViewById(R.id.info_header); infoBody = findViewById(R.id.info_body); infoText = findViewById(R.id.info_text)
     }
 
-    private fun tv(t: String, size: Float, color: Int = TXT, bold: Boolean = false) = TextView(this).apply {
-        text = t; textSize = size; setTextColor(color); if (bold) setTypeface(typeface, Typeface.BOLD)
-    }
-
-    private fun section(t: String) = tv(t.uppercase(), 12f, SUB, true).apply { letterSpacing = 0.08f; setPadding(dp(4), dp(20), 0, dp(8)) }
-
-    private fun card(vararg v: View) = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL; background = shape(CARD); setPadding(dp(16), dp(14), dp(16), dp(14))
-        for (x in v) addView(x)
-    }
-
-    private fun field(name: String, sp: Spinner) = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL; setPadding(0, dp(6), 0, dp(6))
-        addView(tv(name, 13f, SUB))
-        addView(sp, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)))
-    }
-
-    private fun switchRow(title: String, sub: String, sw: Switch) = LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(8), 0, dp(8))
-        val txt = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; addView(tv(title, 15f)); addView(tv(sub, 12f, SUB)) }
-        addView(txt, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)); addView(sw)
-    }
-
-    private fun btn(t: String, fill: Int, textColor: Int, stroke: Int = 0) = Button(this).apply {
-        text = t; isAllCaps = false; textSize = 15f; setTextColor(textColor); background = shape(fill, 12, stroke); minimumHeight = dp(48)
-    }
-
-    private fun collapsible(title: String, content: View): View {
-        content.visibility = View.GONE
-        val h = tv("\u25B8  $title", 14f, ACC, true).apply { setPadding(dp(4), dp(14), 0, dp(10)); minimumHeight = dp(48); gravity = Gravity.CENTER_VERTICAL }
-        h.setOnClickListener {
-            val open = content.visibility != View.VISIBLE
-            content.visibility = if (open) View.VISIBLE else View.GONE
-            h.text = (if (open) "\u25BE  " else "\u25B8  ") + title
+    private fun expander(header: View, body: View, arrow: ImageView, open: Boolean, onChange: (Boolean) -> Unit) {
+        fun show(o: Boolean) {
+            body.visibility = if (o) View.VISIBLE else View.GONE
+            arrow.rotation = if (o) 180f else 0f
+            ViewCompat.setStateDescription(header, getString(if (o) R.string.state_expanded else R.string.state_collapsed))
         }
-        return LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(h); addView(content) }
+        show(open)
+        header.setOnClickListener { val o = body.visibility != View.VISIBLE; show(o); onChange(o) }
     }
 
-    private fun pick(sp: Spinner, f: (Int) -> Unit) {
-        sp.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) { f(pos) }
-            override fun onNothingSelected(p: AdapterView<*>?) {}
+    private fun wireViews() {
+        val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
+        toolbar.inflateMenu(R.menu.main_menu)
+        toolbar.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                R.id.menu_device_info -> {
+                    if (infoBody.visibility != View.VISIBLE) infoHeader.performClick()
+                    infoHeader.post { infoHeader.requestRectangleOnScreen(Rect(0, 0, infoHeader.width, infoHeader.height + infoBody.height), false) }
+                    true
+                }
+                R.id.menu_about -> {
+                    MaterialAlertDialogBuilder(this).setTitle(R.string.about_title)
+                        .setMessage(getString(R.string.about_body, UsbCamService.VERSION))
+                        .setPositiveButton(R.string.ok, null).show()
+                    true
+                }
+                else -> false
+            }
         }
-    }
+        fab.setOnClickListener { startActivity(Intent(this, CameraActivity::class.java)) }
 
-    private fun changed() { save(); dirty = true; updateSummary() }
+        // camera on/off
+        swCam.isChecked = UsbCamService.camEnabled
+        swCam.setOnCheckedChangeListener { _, on ->
+            if (!syncing) startForegroundService(Intent(this, UsbCamService::class.java)
+                .setAction(if (on) UsbCamService.ACTION_CAM_ON else UsbCamService.ACTION_CAM_OFF))
+        }
+        findViewById<View>(R.id.row_camera).setOnClickListener { swCam.performClick() }
 
-    private fun buildUi(): View {
-        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(20), dp(16), dp(32)) }
-        spCam = Spinner(this); spMode = Spinner(this); spFps = Spinner(this); spBr = Spinner(this)
+        // status card button
+        statusAction.setOnClickListener {
+            if (action == 1) {
+                if (shouldShowRequestPermissionRationale(Manifest.permission.CAMERA)) requestPermissions(arrayOf(Manifest.permission.CAMERA), 1)
+                else startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null)))
+            } else if (action == 2) {
+                startForegroundService(Intent(this, UsbCamService::class.java).setAction(UsbCamService.ACTION_CAM_ON))
+            }
+        }
+
+        // presets
+        presetGroup.addOnButtonCheckedListener { _, id, checked ->
+            if (syncing) return@addOnButtonCheckedListener
+            if (checked) applyPreset(when (id) { R.id.preset_fast -> 720; R.id.preset_balanced -> 1080; else -> 1440 })
+            else presetGroup.post { updateSummary() } // tapping the selected preset again keeps it selected
+        }
+
+        // dropdowns
+        ddCam.setOnItemClickListener { _, _, pos, _ ->
+            if (pos != camIdx) { camIdx = pos; modeIdx = 0; fpsIdx = 0; fillModes(); fillFps(); changed() }
+        }
+        ddRes.setOnItemClickListener { _, _, pos, _ ->
+            if (pos != modeIdx) { modeIdx = pos; fpsIdx = 0; fillFps(); changed() }
+            updateHint()
+        }
+        ddFps.setOnItemClickListener { _, _, pos, _ -> if (pos != fpsIdx) { fpsIdx = pos; changed() } }
+        ddBr.setOnItemClickListener { _, _, pos, _ -> if (pos != brIdx) { brIdx = pos; changed() } }
+        chipZoomed.setOnClickListener { explain(R.string.chip_zoomed, R.string.chip_zoomed_why) }
+        chipUntested.setOnClickListener { explain(R.string.chip_untested, R.string.chip_untested_why) }
+
+        // protection and advanced
         val p0 = Prefs(this)
-        cbLl = Switch(this).apply { isChecked = p0.ll == 1; setOnCheckedChangeListener { _, _ -> changed() } }
-        cbGuard = Switch(this).apply { isChecked = p0.guard; setOnCheckedChangeListener { _, _ -> save() } }
+        swGuard.isChecked = p0.guard
+        swGuard.setOnCheckedChangeListener { _, _ -> save() }
+        findViewById<View>(R.id.row_guard).setOnClickListener { swGuard.performClick() }
+        swLl.isChecked = p0.ll == 1
+        swLl.setOnCheckedChangeListener { _, _ -> changed() }
+        findViewById<View>(R.id.row_ll).setOnClickListener { swLl.performClick() }
 
-        // header + live status
-        val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM
-            addView(tv("UsbCam", 24f, TXT, true)); addView(tv("   v${UsbCamService.VERSION}", 12f, SUB).apply { setPadding(0, 0, 0, dp(3)) }) }
-        dot = View(this).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(SUB) } }
-        titleTv = tv("Starting...", 18f, TXT, true)
-        val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            addView(dot, LinearLayout.LayoutParams(dp(12), dp(12)).apply { rightMargin = dp(10) }); addView(titleTv) }
-        statusTv = tv("", 13f, SUB).apply { setPadding(0, dp(4), 0, dp(10)) }
-        guardTv = tv("", 13f, SUB)
-        hintTv = tv("", 12f, WARN).apply { setPadding(0, dp(4), 0, 0) }
-        col.addView(header)
-        col.addView(LinearLayout(this).apply { setPadding(0, dp(14), 0, 0) })
-        swCam = Switch(this).apply { isChecked = UsbCamService.camEnabled
-            setOnCheckedChangeListener { _, on ->
-                if (!syncing) startForegroundService(Intent(this@MainActivity, UsbCamService::class.java)
-                    .setAction(if (on) UsbCamService.ACTION_CAM_ON else UsbCamService.ACTION_CAM_OFF)) } }
-        col.addView(card(top, statusTv, guardTv, switchRow("Camera", "Turn off to stop streaming and free the camera for other apps", swCam)))
-        col.addView(btn("Open camera preview and controls", ACC, Color.WHITE).apply {
-            setOnClickListener { startActivity(Intent(this@MainActivity, CameraActivity::class.java)) } },
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) })
+        val dynRow = findViewById<View>(R.id.row_dyn)
+        if (DynamicColors.isDynamicColorAvailable()) {
+            swDyn.isChecked = UiPrefs.isDynamic(this)
+            swDyn.setOnCheckedChangeListener { _, on -> UiPrefs.saveDynamic(this, on); recreate() }
+            dynRow.setOnClickListener { swDyn.performClick() }
+        } else dynRow.visibility = View.GONE
 
-        // quality presets
-        col.addView(section("Quality"))
-        val presets = listOf(Triple("Fast", "720p, least delay", 720), Triple("Balanced", "1080p, recommended", 1080), Triple("Sharp", "1440p, best picture", 1440))
-        val prow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        for ((n, d, h) in presets) {
-            val b = btn("$n\n$d", CARD, TXT, Color.rgb(52, 57, 68)).apply { textSize = 13f }
-            b.setOnClickListener { applyPreset(h) }
-            presetBtns.add(b)
-            prow.addView(b, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(dp(3), 0, dp(3), 0) })
+        val themeGroup = findViewById<MaterialButtonToggleGroup>(R.id.theme_group)
+        themeGroup.check(when (UiPrefs.nightMode(this)) { AppCompatDelegate.MODE_NIGHT_NO -> R.id.theme_light; AppCompatDelegate.MODE_NIGHT_YES -> R.id.theme_dark; else -> R.id.theme_system })
+        themeGroup.addOnButtonCheckedListener { _, id, checked ->
+            if (!checked) return@addOnButtonCheckedListener
+            val m = when (id) { R.id.theme_light -> AppCompatDelegate.MODE_NIGHT_NO; R.id.theme_dark -> AppCompatDelegate.MODE_NIGHT_YES; else -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM }
+            UiPrefs.saveNightMode(this, m)
+            AppCompatDelegate.setDefaultNightMode(m)
         }
-        summaryTv = tv("", 13f, SUB).apply { setPadding(dp(4), dp(10), 0, 0) }
-        col.addView(prow); col.addView(summaryTv)
+        findViewById<View>(R.id.btn_reset).setOnClickListener {
+            val p = Prefs(this); p.cam = ""; p.w = 0; p.h = 0; p.fps = 0; p.br = 0
+            restoreSelection(); fillCam(); fillModes(); fillFps(); fillBr(); changed()
+        }
 
-        // fine tuning
-        col.addView(section("Camera and detail"))
-        col.addView(card(field("Camera", spCam), field("Resolution", spMode), hintTv, field("Frame rate", spFps)))
+        expander(findViewById(R.id.adv_header), findViewById(R.id.adv_body), findViewById(R.id.adv_arrow), advOpen) { advOpen = it }
+        expander(infoHeader, infoBody, findViewById(R.id.info_arrow), infoOpen) { infoOpen = it }
+        infoText.text = capsJson?.let { Caps.text(it) } ?: getString(R.string.info_unavailable)
 
-        // pending-changes bar
-        val btnApply = btn("Restart stream with these settings", ACC, Color.WHITE).apply {
-            setOnClickListener {
-                save(); dirty = false; updateSummary()
-                startForegroundService(Intent(this@MainActivity, UsbCamService::class.java).setAction(UsbCamService.ACTION_APPLY))
-                Toast.makeText(this@MainActivity, "Settings applied", Toast.LENGTH_SHORT).show()
-            } }
-        applyCard = card(tv("You changed the settings", 14f, TXT, true), tv("They are saved. A running stream keeps the old ones until you restart it.", 12f, SUB).apply { setPadding(0, dp(2), 0, dp(10)) }, btnApply)
-        applyCard.visibility = View.GONE
-        col.addView(LinearLayout(this).apply { setPadding(0, dp(12), 0, 0); addView(applyCard, LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT) })
-
-        // protection
-        col.addView(section("Protection"))
-        col.addView(card(switchRow("Protect the phone", "Halves the bitrate when warm; stops when hot or the battery is low", cbGuard)))
-
-        // advanced
-        val reset = btn("Reset to recommended settings", BG, ACC, Color.rgb(52, 57, 68)).apply {
-            setOnClickListener {
-                val p = Prefs(this@MainActivity); p.cam = ""; p.w = 0; p.h = 0; p.fps = 0; p.br = 0
-                restoreSelection(); fillCam(); fillModes(); fillFps(); fillBr(); dirty = true; updateSummary()
-            } }
-        col.addView(collapsible("Advanced", card(field("Bitrate (picture data per second)", spBr),
-            switchRow("Low-latency tuning", "Asks the encoder for the shortest delay", cbLl), reset)))
-        col.addView(collapsible("Device info", card(tv(capsJson?.let { Caps.text(it) } ?: "Camera information is unavailable.", 11f, SUB).apply { typeface = Typeface.MONOSPACE })))
-
-        col.addView(tv("The PC viewer and the OBS source use these settings unless you choose custom values on the PC.", 12f, SUB).apply { setPadding(dp(4), dp(12), dp(4), dp(16)) })
-        col.addView(btn("Quit UsbCam", BG, BAD, BAD).apply { setOnClickListener {
-            startService(Intent(this@MainActivity, UsbCamService::class.java).setAction(UsbCamService.ACTION_QUIT)) } },
-            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-
-        pick(spCam) { pos -> if (pos != camIdx) { camIdx = pos; modeIdx = 0; fpsIdx = 0; fillModes(); fillFps(); changed() } }
-        pick(spMode) { pos -> if (pos != modeIdx) { modeIdx = pos; fpsIdx = 0; fillFps(); changed() }; updateHint() }
-        pick(spFps) { pos -> if (pos != fpsIdx) { fpsIdx = pos; changed() } }
-        pick(spBr) { pos -> if (pos != brIdx) { brIdx = pos; changed() } }
-        return ScrollView(this).apply { setBackgroundColor(BG); isFillViewport = true; addView(col) }
+        // quit with confirmation
+        findViewById<View>(R.id.btn_quit).setOnClickListener {
+            val d = MaterialAlertDialogBuilder(this).setTitle(R.string.quit_title).setMessage(R.string.quit_message)
+                .setNegativeButton(R.string.cancel, null)
+                .setPositiveButton(R.string.quit) { _, _ ->
+                    startService(Intent(this, UsbCamService::class.java).setAction(UsbCamService.ACTION_QUIT))
+                }.show()
+            d.getButton(DialogInterface.BUTTON_POSITIVE).setTextColor(MaterialColors.getColor(this, MR.attr.colorError, 0))
+        }
     }
+
+    private fun explain(titleRes: Int, bodyRes: Int) {
+        MaterialAlertDialogBuilder(this).setTitle(titleRes).setMessage(bodyRes).setPositiveButton(R.string.ok, null).show()
+    }
+
+    // ---- dropdowns ----
+
+    private fun fillDropdown(dd: MaterialAutoCompleteTextView, items: List<String>, sel: Int) {
+        dd.setAdapter(AllItemsAdapter(this, items))
+        dd.setText(items.getOrElse(sel) { "" }, false)
+    }
+
+    private fun fillCam() = fillDropdown(ddCam, cams.map { it.label.trim() }, camIdx)
+
+    private fun fillModes() {
+        val m = curModes()
+        val items = (0 until m.length()).map {
+            val x = m.getJSONObject(it)
+            val n = when (x.getString("note")) { "cropped" -> getString(R.string.note_zoomed_item); "unverified" -> getString(R.string.note_untested_item); else -> "" }
+            getString(R.string.mode_item, x.getString("label"), x.getInt("w"), x.getInt("h"), n)
+        }
+        fillDropdown(ddRes, items, modeIdx); updateHint()
+    }
+
+    private fun fillFps() = fillDropdown(ddFps, fpsList().map { getString(R.string.fps_item, it) }, fpsIdx)
+
+    private fun fillBr() = fillDropdown(ddBr, brOptions.map { if (it == 0) getString(R.string.bitrate_auto) else getString(R.string.bitrate_item, it) }, brIdx)
+
+    private fun updateHint() {
+        val n = curModes().optJSONObject(modeIdx)?.optString("note") ?: ""
+        chipZoomed.visibility = if (n == "cropped") View.VISIBLE else View.GONE
+        chipUntested.visibility = if (n == "unverified") View.VISIBLE else View.GONE
+        updateSummary()
+    }
+
+    // ---- presets, summary, pending bar ----
 
     private fun applyPreset(targetH: Int) {
         val m = curModes(); if (m.length() == 0) return
@@ -297,78 +392,91 @@ class MainActivity : Activity() {
         brIdx = 0; fillBr(); changed()
     }
 
-    private fun adapter(items: List<String>) = object : ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, items) {
-        override fun getView(pos: Int, v: View?, parent: android.view.ViewGroup): View = super.getView(pos, v, parent).also { styleItem(it) }
-        override fun getDropDownView(pos: Int, v: View?, parent: android.view.ViewGroup): View = super.getDropDownView(pos, v, parent).also { styleItem(it); (it as? TextView)?.minHeight = dp(48) }
-        private fun styleItem(it: View) { (it as? TextView)?.apply { setTextColor(Color.WHITE); textSize = 15f; gravity = Gravity.CENTER_VERTICAL } }
-    }
-
-    private fun fillCam() { spCam.adapter = adapter(cams.map { it.label }); spCam.setSelection(camIdx, false) }
-
-    private fun fillModes() {
-        val m = curModes()
-        val items = (0 until m.length()).map {
-            val x = m.getJSONObject(it)
-            val n = when (x.getString("note")) { "cropped" -> "  (zoomed in)"; "unverified" -> "  (untested)"; else -> "" }
-            "${x.getString("label")}  \u00B7  ${x.getInt("w")}\u00D7${x.getInt("h")}$n"
-        }
-        spMode.adapter = adapter(items); spMode.setSelection(modeIdx, false); updateHint()
-    }
-
-    private fun fillFps() { spFps.adapter = adapter(fpsList().map { "$it frames per second" }); spFps.setSelection(fpsIdx, false) }
-
-    private fun fillBr() {
-        spBr.adapter = adapter(brOptions.map { if (it == 0) "Automatic (recommended)" else "$it Mbit/s" }); spBr.setSelection(brIdx, false)
-    }
-
-    private fun updateHint() {
-        val n = curModes().optJSONObject(modeIdx)?.optString("note") ?: ""
-        hintTv.text = when (n) {
-            "cropped" -> "Zoomed in: on this phone this size shows only the middle part of the sensor."
-            "unverified" -> "Untested on this phone model. It may be zoomed in or add delay."
-            else -> ""
-        }
-        hintTv.visibility = if (hintTv.text.isEmpty()) View.GONE else View.VISIBLE
-        updateSummary()
-    }
+    private fun changed() { save(); dirty = true; updateSummary(); showPending() }
 
     private fun updateSummary() {
         if (!::summaryTv.isInitialized) return
-        val m = curModes().optJSONObject(modeIdx)
+        val m = curModes().optJSONObject(modeIdx) ?: return
         val fps = fpsList().getOrNull(fpsIdx) ?: 30
-        if (m != null) {
-            val w = m.getInt("w"); val h = m.getInt("h")
-            val mb = if (brOptions[brIdx] > 0) brOptions[brIdx] else Caps.bitrate(w, h, fps) / 1_000_000
-            summaryTv.text = "Sending ${w}\u00D7${h} at $fps fps, about $mb Mbit/s"
-            val hs = intArrayOf(720, 1080, 1440)
-            for (i in presetBtns.indices) {
-                val closest = (0 until curModes().length()).minByOrNull { Math.abs(curModes().getJSONObject(it).getInt("h") - hs[i]) }
-                val on = closest == modeIdx && fps == 30 && brIdx == 0
-                presetBtns[i].background = shape(if (on) Color.rgb(32, 58, 105) else CARD, 12, if (on) ACC else Color.rgb(52, 57, 68))
-            }
+        val w = m.getInt("w"); val h = m.getInt("h")
+        val mb = if (brOptions[brIdx] > 0) brOptions[brIdx] else Caps.bitrate(w, h, fps) / 1_000_000
+        val hs = intArrayOf(720, 1080, 1440)
+        val ids = intArrayOf(R.id.preset_fast, R.id.preset_balanced, R.id.preset_sharp)
+        val names = intArrayOf(R.string.preset_fast, R.string.preset_balanced, R.string.preset_sharp)
+        var on = -1
+        for (i in hs.indices) {
+            val closest = (0 until curModes().length()).minByOrNull { Math.abs(curModes().getJSONObject(it).getInt("h") - hs[i]) }
+            if (closest == modeIdx && fps == 30 && brIdx == 0) on = i
         }
-        applyCard.visibility = if (dirty) View.VISIBLE else View.GONE
+        syncing = true
+        if (on >= 0) presetGroup.check(ids[on]) else presetGroup.clearChecked()
+        syncing = false
+        summaryTv.text = getString(R.string.summary_fmt, getString(if (on >= 0) names[on] else R.string.preset_custom), w, h, fps, mb)
+    }
+
+    private fun showPending() {
+        if (pending?.isShown == true) return
+        val sb = Snackbar.make(coord, R.string.pending_msg, Snackbar.LENGTH_INDEFINITE)
+            .setAction(R.string.restart_stream) { applyNow() }
+        sb.setAnchorView(fab)
+        pending = sb
+        sb.show()
+    }
+
+    private fun applyNow() {
+        save(); dirty = false; updateSummary()
+        startForegroundService(Intent(this, UsbCamService::class.java).setAction(UsbCamService.ACTION_APPLY))
+        Snackbar.make(coord, R.string.restarted, Snackbar.LENGTH_SHORT).setAnchorView(fab).show()
+    }
+
+    // ---- live status ----
+
+    private fun attr(a: Int): Int = MaterialColors.getColor(statusCard, a)
+
+    private fun stateNow(): UiState {
+        val s = UsbCamService
+        val low = s.status.lowercase()
+        val permOk = checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        val live = s.instance?.clientOn() == true
+        val errBg = MR.attr.colorErrorContainer; val errFg = MR.attr.colorOnErrorContainer
+        return when {
+            !permOk -> UiState(R.string.st_noperm, R.string.st_noperm_text, R.drawable.ic_warning, errBg, errFg, 1)
+            s.guardStage == 2 -> UiState(R.string.st_hot, R.string.st_hot_text, R.drawable.ic_warning, errBg, errFg, 0)
+            !s.camEnabled -> UiState(R.string.st_off, R.string.st_off_text, R.drawable.ic_videocam_off, MR.attr.colorSurfaceContainerHighest, MR.attr.colorOnSurface, 0)
+            low.contains("denied") || low.contains("fail") || low.contains("error") -> UiState(R.string.st_problem, R.string.st_problem_text, R.drawable.ic_warning, errBg, errFg, 2)
+            live -> UiState(R.string.st_streaming, R.string.st_streaming_text, R.drawable.ic_sensors, MR.attr.colorTertiaryContainer, MR.attr.colorOnTertiaryContainer, 0)
+            low.contains("stream") || low.contains("wait") || low.contains("listen") || low.contains("ready") || low.contains("idle") || low.contains("control") ->
+                UiState(R.string.st_waiting, R.string.st_waiting_text, R.drawable.ic_videocam, MR.attr.colorPrimaryContainer, MR.attr.colorOnPrimaryContainer, 0)
+            else -> UiState(R.string.st_starting, R.string.st_starting_text, R.drawable.ic_videocam, MR.attr.colorSurfaceContainerHigh, MR.attr.colorOnSurface, 0)
+        }
     }
 
     private fun refreshStatus() {
         val s = UsbCamService
-        val raw = s.status
-        val low = raw.lowercase()
-        val (title, color) = when {
-            s.guardStage == 2 -> "Stopped to protect the phone" to BAD
-            low.contains("denied") || low.contains("fail") || low.contains("error") -> "Problem" to BAD
-            low.contains("stream") -> "Streaming to PC" to OKC
-            low.contains("wait") || low.contains("listen") || low.contains("ready") -> "Ready, waiting for the PC" to ACC
-            else -> "Starting..." to SUB
+        val st = stateNow()
+        val bg = attr(st.bg); val fg = attr(st.fg)
+        statusCard.setCardBackgroundColor(bg)
+        statusIcon.setImageResource(st.icon)
+        statusIcon.imageTintList = ColorStateList.valueOf(fg)
+        statusTitle.setText(st.title); statusTitle.setTextColor(fg)
+        val warm = s.guardStage == 1 && st.action == 0 && s.camEnabled
+        statusText.text = getString(st.text) + if (warm) getString(R.string.st_warm_note) else ""
+        statusText.setTextColor(fg)
+        action = st.action
+        if (st.action == 0) statusAction.visibility = View.GONE
+        else { statusAction.visibility = View.VISIBLE; statusAction.setText(if (st.action == 1) R.string.st_fix_perm else R.string.st_try_again) }
+
+        chipBattery.text = if (s.battLevel >= 0) getString(if (s.plugged) R.string.chip_battery_charging else R.string.chip_battery, s.battLevel) else getString(R.string.chip_battery_unknown)
+        chipTemp.text = getString(R.string.chip_temp, s.battTemp)
+        for (c in listOf(chipBattery, chipTemp)) {
+            c.setTextColor(fg); c.chipIconTint = ColorStateList.valueOf(fg); c.chipStrokeColor = ColorStateList.valueOf(fg)
         }
-        val off = !s.camEnabled
+
         if (swCam.isChecked != s.camEnabled) { syncing = true; swCam.isChecked = s.camEnabled; syncing = false }
-        titleTv.text = if (off) "Camera off" else title
-        (dot.background as GradientDrawable).setColor(if (off) SUB else color)
-        statusTv.text = raw
-        val batt = if (s.battLevel >= 0) "${s.battLevel}%${if (s.plugged) " (charging)" else ""}" else "?"
-        guardTv.text = "Battery $batt   \u00B7   ${"%.1f".format(s.battTemp)} \u00B0C" +
-            (if (s.guardMsg.isNotEmpty()) "\n${s.guardMsg}" else "")
-        guardTv.setTextColor(if (s.guardStage > 0) WARN else SUB)
+        camSupport.setText(if (s.camEnabled) R.string.camera_on_support else R.string.camera_off_support)
+        if (infoBody.visibility == View.VISIBLE) {
+            infoText.text = (capsJson?.let { Caps.text(it) } ?: getString(R.string.info_unavailable)) + "\n\n" + getString(R.string.info_status) + ": " + s.status +
+                (if (s.guardMsg.isNotEmpty()) "\n" + s.guardMsg else "")
+        }
     }
 }

@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:id="@+id/cam_root" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@android:color/black">
+
+    <com.harman.usbcam.AspectLayout android:id="@+id/preview_frame" android:layout_width="match_parent" android:layout_height="match_parent"
+        android:layout_gravity="center" android:contentDescription="@string/cd_preview">
+        <SurfaceView android:id="@+id/preview_surface" android:layout_width="match_parent" android:layout_height="match_parent" />
+        <View android:id="@+id/focus_ring" android:layout_width="@dimen/cam_ring" android:layout_height="@dimen/cam_ring" android:visibility="gone" />
+    </com.harman.usbcam.AspectLayout>
+
+    <com.google.android.material.button.MaterialButton android:id="@+id/btn_back" style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
+            android:layout_width="@dimen/cam_button" android:layout_height="@dimen/cam_button" android:contentDescription="@string/cd_back"
+            app:icon="@drawable/ic_arrow_back" app:iconSize="28dp" android:layout_gravity="top|start" android:layout_marginStart="16dp" android:layout_marginTop="12dp" />
+
+    <TextView android:id="@+id/status_pill" android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_gravity="top|center_horizontal" android:layout_marginTop="18dp" android:minHeight="32dp" android:gravity="center"
+        android:paddingStart="16dp" android:paddingEnd="16dp" android:background="@drawable/bg_pill_idle"
+        android:textAppearance="?attr/textAppearanceLabelLarge" android:textColor="@color/white" />
+
+    <com.google.android.material.button.MaterialButton android:id="@+id/lock_badge" style="@style/Widget.Material3.Button.TonalButton"
+        android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="top|end"
+        android:layout_marginTop="12dp" android:layout_marginEnd="20dp" android:minHeight="@dimen/touch_min" android:visibility="gone"
+        android:text="@string/badge_lock" android:contentDescription="@string/cd_unlock"
+        android:textColor="@color/cam_on_lock" app:backgroundTint="@color/cam_lock" app:icon="@drawable/ic_lock" app:iconTint="@color/cam_on_lock" />
+
+    <LinearLayout android:id="@+id/right_col" android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_gravity="end|center_vertical" android:layout_marginEnd="20dp" android:orientation="vertical" android:gravity="center_horizontal">
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_flip" style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
+            android:layout_width="@dimen/cam_button" android:layout_height="@dimen/cam_button" android:contentDescription="@string/cd_flip"
+            app:icon="@drawable/ic_flip_camera" app:iconSize="28dp" android:layout_marginBottom="8dp" />
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_lock" style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
+            android:layout_width="@dimen/cam_button" android:layout_height="@dimen/cam_button" android:contentDescription="@string/cd_lock"
+            app:icon="@drawable/ic_lock" app:iconSize="28dp" android:checkable="true" android:layout_marginBottom="8dp" />
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_pro" style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
+            android:layout_width="@dimen/cam_button" android:layout_height="@dimen/cam_button" android:contentDescription="@string/cd_pro"
+            app:icon="@drawable/ic_tune" app:iconSize="28dp" android:checkable="true" />
+    </LinearLayout>
+
+    <com.google.android.material.card.MaterialCardView android:id="@+id/pro_panel" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_gravity="bottom|start" android:layout_marginStart="16dp" android:layout_marginEnd="@dimen/cam_panel_end" android:layout_marginBottom="12dp"
+        android:visibility="gone" app:cardBackgroundColor="@color/cam_panel" app:cardCornerRadius="28dp" app:cardElevation="0dp" app:strokeWidth="0dp">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="12dp">
+            <HorizontalScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:scrollbars="none">
+                <com.google.android.material.chip.ChipGroup android:id="@+id/chip_group" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    app:singleLine="true" app:singleSelection="true" app:selectionRequired="true">
+                    <com.google.android.material.chip.Chip android:id="@+id/chip_iso" style="@style/Widget.Material3.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checkable="true" /><com.google.android.material.chip.Chip android:id="@+id/chip_speed" style="@style/Widget.Material3.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checkable="true" /><com.google.android.material.chip.Chip android:id="@+id/chip_ev" style="@style/Widget.Material3.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checkable="true" /><com.google.android.material.chip.Chip android:id="@+id/chip_focus" style="@style/Widget.Material3.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checkable="true" /><com.google.android.material.chip.Chip android:id="@+id/chip_wb" style="@style/Widget.Material3.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checkable="true" />
+                </com.google.android.material.chip.ChipGroup>
+            </HorizontalScrollView>
+            <LinearLayout android:id="@+id/focus_box" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical"
+                android:visibility="gone" android:layout_marginTop="8dp">
+                <com.google.android.material.button.MaterialButtonToggleGroup android:id="@+id/focus_modes" android:layout_width="match_parent"
+                    android:layout_height="wrap_content" app:singleSelection="true" app:selectionRequired="true">
+                    <com.google.android.material.button.MaterialButton android:id="@+id/fm_auto" style="?attr/materialButtonOutlinedStyle" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:minHeight="@dimen/touch_min" android:text="@string/fm_auto" android:contentDescription="@string/fm_auto_cd" android:insetTop="0dp" android:insetBottom="0dp" /><com.google.android.material.button.MaterialButton android:id="@+id/fm_single" style="?attr/materialButtonOutlinedStyle" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:minHeight="@dimen/touch_min" android:text="@string/fm_single" android:contentDescription="@string/fm_single_cd" android:insetTop="0dp" android:insetBottom="0dp" /><com.google.android.material.button.MaterialButton android:id="@+id/fm_inf" style="?attr/materialButtonOutlinedStyle" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:minHeight="@dimen/touch_min" android:text="@string/fm_inf" android:contentDescription="@string/fm_inf_cd" android:insetTop="0dp" android:insetBottom="0dp" /><com.google.android.material.button.MaterialButton android:id="@+id/fm_lock" style="?attr/materialButtonOutlinedStyle" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:minHeight="@dimen/touch_min" android:text="@string/fm_lock" android:contentDescription="@string/fm_lock_cd" android:insetTop="0dp" android:insetBottom="0dp" /><com.google.android.material.button.MaterialButton android:id="@+id/fm_manual" style="?attr/materialButtonOutlinedStyle" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:minHeight="@dimen/touch_min" android:text="@string/fm_manual" android:contentDescription="@string/fm_manual_cd" android:insetTop="0dp" android:insetBottom="0dp" />
+                </com.google.android.material.button.MaterialButtonToggleGroup>
+                <TextView android:id="@+id/focus_hint" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp"
+                    android:textAppearance="?attr/textAppearanceBodySmall" android:textColor="?attr/colorOnSurfaceVariant" />
+            </LinearLayout>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal"
+                android:gravity="center_vertical" android:layout_marginTop="4dp">
+                <com.google.android.material.button.MaterialButton android:id="@+id/btn_auto" style="?attr/materialButtonOutlinedStyle"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content" android:minHeight="@dimen/touch_min" android:minWidth="88dp"
+                    android:checkable="true" android:text="@string/btn_auto" android:contentDescription="@string/cd_auto" />
+                <com.google.android.material.slider.Slider android:id="@+id/slider" android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1" android:valueFrom="0" android:valueTo="100" android:stepSize="1" android:contentDescription="@string/cd_slider" />
+                <TextView android:id="@+id/value_tv" android:layout_width="88dp" android:layout_height="wrap_content" android:gravity="center"
+                    android:textAppearance="?attr/textAppearanceTitleMedium" android:textColor="?attr/colorPrimary" />
+            </LinearLayout>
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+</FrameLayout>

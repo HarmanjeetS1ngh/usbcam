@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">UsbCam</string>
+    <string name="ok">OK</string>
+    <string name="cancel">Cancel</string>
+    <string name="got_it">Got it</string>
+    <string name="menu_device_info">Device info</string>
+    <string name="menu_about">About</string>
+    <string name="about_title">About UsbCam</string>
+    <string name="about_body">UsbCam turns your phone into a camera for your PC. Plug in the USB cable, then open OBS or the UsbCam viewer.\n\nVersion %1$s</string>
+
+    <!-- status card -->
+    <string name="st_streaming">Streaming to PC</string>
+    <string name="st_streaming_text">Your PC is receiving the picture. You can lock the phone screen.</string>
+    <string name="st_waiting">Ready, waiting for the PC</string>
+    <string name="st_waiting_text">No PC connected. Plug in the USB cable and open OBS or the viewer.</string>
+    <string name="st_off">Camera off</string>
+    <string name="st_off_text">Turn the camera on below to stream to your PC. Other apps can use the camera now.</string>
+    <string name="st_hot">Stopped to protect the phone</string>
+    <string name="st_hot_text">The phone is too hot or the battery is low. Let it cool down or plug in the charger. Streaming can start again once it is safe.</string>
+    <string name="st_warm_note">\n\nThe phone is warm, so picture quality was lowered automatically.</string>
+    <string name="st_problem">Camera problem</string>
+    <string name="st_problem_text">The camera could not start. Close other camera apps, then try again.</string>
+    <string name="st_try_again">Try again</string>
+    <string name="st_noperm">Camera permission is off</string>
+    <string name="st_noperm_text">UsbCam needs the camera to work. Allow the Camera permission, then come back.</string>
+    <string name="st_fix_perm">Allow camera</string>
+    <string name="st_starting">Starting…</string>
+    <string name="st_starting_text">Getting the camera ready.</string>
+    <string name="chip_battery">Battery %1$d%%</string>
+    <string name="chip_battery_charging">Battery %1$d%% · charging</string>
+    <string name="chip_battery_unknown">Battery unknown</string>
+    <string name="chip_temp">Phone %1$.1f °C</string>
+
+    <!-- camera switch -->
+    <string name="camera_switch_title">Camera</string>
+    <string name="camera_switch_cd">Camera on or off</string>
+    <string name="camera_on_support">On: ready to stream to your PC</string>
+    <string name="camera_off_support">Off: other apps can use the camera</string>
+
+    <!-- quality -->
+    <string name="section_quality">Quality</string>
+    <string name="preset_fast">Fast</string>
+    <string name="preset_balanced">Balanced</string>
+    <string name="preset_sharp">Sharp</string>
+    <string name="preset_custom">Custom</string>
+    <string name="summary_fmt">%1$s: %2$d×%3$d, %4$d frames per second, about %5$d Mbit/s</string>
+    <string name="section_picture">Camera and picture</string>
+    <string name="hint_camera">Camera</string>
+    <string name="helper_camera">The back camera usually gives the best picture.</string>
+    <string name="hint_resolution">Picture size</string>
+    <string name="helper_resolution">Bigger is sharper but uses more power and data.</string>
+    <string name="hint_fps">Smoothness</string>
+    <string name="helper_fps">More frames per second looks smoother.</string>
+    <string name="fps_item">%1$d frames per second</string>
+    <string name="facing_back">Back</string>
+    <string name="facing_front">Front</string>
+    <string name="cam_label">%1$s camera · #%2$s</string>
+    <string name="lens_label">%1$s lens %2$s mm · #%3$s</string>
+    <string name="mode_item">%1$s · %2$d×%3$d%4$s</string>
+    <string name="note_zoomed_item">  (zoomed in)</string>
+    <string name="note_untested_item">  (untested)</string>
+    <string name="chip_zoomed">Zoomed in</string>
+    <string name="chip_untested">Untested</string>
+    <string name="chip_zoomed_why">On this phone this size shows only the middle part of the sensor, so the picture looks zoomed in. Pick 1080p for the full view.</string>
+    <string name="chip_untested_why">This size has not been tested on this phone model. It may look zoomed in or add delay.</string>
+
+    <!-- pending changes -->
+    <string name="pending_msg">Settings changed. Restart the stream to use them.</string>
+    <string name="restart_stream">Restart stream</string>
+    <string name="restarted">Stream restarted</string>
+
+    <!-- protection / advanced / info -->
+    <string name="protect_title">Protect the phone</string>
+    <string name="protect_support">Lowers quality when warm. Stops when hot or the battery is low.</string>
+    <string name="advanced">Advanced</string>
+    <string name="device_info">Device info</string>
+    <string name="state_expanded">Expanded</string>
+    <string name="state_collapsed">Collapsed</string>
+    <string name="hint_bitrate">Picture data rate</string>
+    <string name="helper_bitrate">Higher is sharper but uses more of the USB link.</string>
+    <string name="bitrate_auto">Automatic (recommended)</string>
+    <string name="bitrate_item">%1$d Mbit/s</string>
+    <string name="fast_title">Fastest response</string>
+    <string name="fast_support">Asks the phone for the shortest delay.</string>
+    <string name="dyn_title">Use wallpaper colors</string>
+    <string name="dyn_support">Match your phone colors (Android 12 and up).</string>
+    <string name="appearance">Appearance</string>
+    <string name="theme_system">System</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="reset_defaults">Reset to recommended settings</string>
+    <string name="info_status">Technical status</string>
+    <string name="info_unavailable">Camera information is unavailable.</string>
+    <string name="pc_note">The PC viewer and the OBS source use these settings unless you choose custom values on the PC.</string>
+    <string name="open_preview">Open camera preview</string>
+    <string name="quit">Quit UsbCam</string>
+    <string name="quit_title">Quit UsbCam?</string>
+    <string name="quit_message">This stops streaming and closes the camera. Your PC will lose the picture until you open UsbCam again.</string>
+
+    <!-- camera screen -->
+    <string name="cd_back">Back to settings</string>
+    <string name="cd_flip">Switch between front and back camera</string>
+    <string name="cd_lock">Lock focus and exposure</string>
+    <string name="cd_pro">Pro controls</string>
+    <string name="cd_preview">Camera preview. Double tap to focus. Double tap and hold to lock focus and exposure.</string>
+    <string name="cd_unlock">Focus and exposure are locked. Tap to unlock.</string>
+    <string name="cd_auto">Reset this control to automatic</string>
+    <string name="cd_slider">Value of the selected control</string>
+    <string name="badge_lock">AE/AF LOCK</string>
+    <string name="badge_ae">AE LOCK</string>
+    <string name="badge_af">AF LOCK</string>
+    <string name="pill_live">LIVE</string>
+    <string name="pill_waiting">Waiting for PC</string>
+    <string name="pill_starting">Starting…</string>
+    <string name="pill_starting_info">Starting stream…</string>
+    <string name="hint_focus">Tap to focus, hold to lock</string>
+    <string name="pro_iso">ISO %1$s</string>
+    <string name="pro_speed">Shutter %1$s</string>
+    <string name="pro_ev">Brightness %1$s</string>
+    <string name="pro_focus">Focus %1$s</string>
+    <string name="pro_wb">White bal. %1$s</string>
+    <string name="val_auto">Auto</string>
+    <string name="val_locked">Locked</string>
+    <string name="val_single">Single</string>
+    <string name="val_locked_at">Locked %1$s</string>
+    <string name="btn_auto">Auto</string>
+    <string name="btn_lock_wb">Lock</string>
+    <string name="btn_unlock_wb">Unlock</string>
+    <string name="fm_auto">Auto</string>
+    <string name="fm_single">Single</string>
+    <string name="fm_inf">∞</string>
+    <string name="fm_lock">Lock</string>
+    <string name="fm_manual">Manual</string>
+    <string name="fm_auto_cd">Automatic focus, keeps refocusing</string>
+    <string name="fm_single_cd">Single focus, focuses when you tap</string>
+    <string name="fm_inf_cd">Infinity focus, for far away</string>
+    <string name="fm_lock_cd">Lock focus at the current distance</string>
+    <string name="fm_manual_cd">Manual focus with the slider</string>
+    <string name="fm_auto_hint">Keeps refocusing by itself.</string>
+    <string name="fm_single_hint">Focuses once when you tap the picture.</string>
+    <string name="fm_inf_hint">Focus is set far away.</string>
+    <string name="fm_lock_hint">Holds the current focus.</string>
+    <string name="fm_manual_hint">Drag the slider to choose the focus.</string>
+    <string name="toast_fixed_focus">This camera has fixed focus</string>
+    <string name="toast_no_manual">Manual ISO and shutter are not supported on this camera</string>
+</resources>

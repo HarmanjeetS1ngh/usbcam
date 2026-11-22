@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="uc_primary">#A8C7FA</color>
+    <color name="uc_onPrimary">#062E6F</color>
+    <color name="uc_primaryContainer">#0842A0</color>
+    <color name="uc_onPrimaryContainer">#D3E3FD</color>
+    <color name="uc_secondary">#B9C7E8</color>
+    <color name="uc_onSecondary">#233147</color>
+    <color name="uc_secondaryContainer">#3A4860</color>
+    <color name="uc_onSecondaryContainer">#D6E3FF</color>
+    <color name="uc_tertiary">#7ADB9A</color>
+    <color name="uc_onTertiary">#00391C</color>
+    <color name="uc_tertiaryContainer">#00522B</color>
+    <color name="uc_onTertiaryContainer">#96F7B5</color>
+    <color name="uc_error">#F2B8B5</color>
+    <color name="uc_onError">#601410</color>
+    <color name="uc_errorContainer">#8C1D18</color>
+    <color name="uc_onErrorContainer">#F9DEDC</color>
+    <color name="uc_surface">#111318</color>
+    <color name="uc_onSurface">#E2E2E6</color>
+    <color name="uc_surfaceVariant">#44474E</color>
+    <color name="uc_onSurfaceVariant">#C4C6D0</color>
+    <color name="uc_outline">#8E9099</color>
+    <color name="uc_outlineVariant">#44474E</color>
+    <color name="uc_inverseSurface">#E2E2E6</color>
+    <color name="uc_inverseOnSurface">#2F3033</color>
+    <color name="uc_inversePrimary">#0B57D0</color>
+    <color name="uc_cLowest">#0C0E13</color>
+    <color name="uc_cLow">#191C20</color>
+    <color name="uc_container">#1D2024</color>
+    <color name="uc_cHigh">#282A2F</color>
+    <color name="uc_cHighest">#33353A</color>
+</resources>

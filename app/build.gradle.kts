@@ -23,4 +23,8 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 }
-// No dependencies on purpose: keeps APK tiny and build fast.
+dependencies {
+    // Material Components (Material 3 theme + widgets) on plain Views: lowest-risk route to M3, no Compose compiler needed.
+    implementation("com.google.android.material:material:1.12.0")
+    implementation("androidx.appcompat:appcompat:1.7.0")
+}

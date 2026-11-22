@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Main screen: follows system light/dark (and wallpaper colours when the user turns that on) -->
+    <style name="Theme.UsbCam" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/uc_primary</item>
+        <item name="colorOnPrimary">@color/uc_onPrimary</item>
+        <item name="colorPrimaryContainer">@color/uc_primaryContainer</item>
+        <item name="colorOnPrimaryContainer">@color/uc_onPrimaryContainer</item>
+        <item name="colorSecondary">@color/uc_secondary</item>
+        <item name="colorOnSecondary">@color/uc_onSecondary</item>
+        <item name="colorSecondaryContainer">@color/uc_secondaryContainer</item>
+        <item name="colorOnSecondaryContainer">@color/uc_onSecondaryContainer</item>
+        <item name="colorTertiary">@color/uc_tertiary</item>
+        <item name="colorOnTertiary">@color/uc_onTertiary</item>
+        <item name="colorTertiaryContainer">@color/uc_tertiaryContainer</item>
+        <item name="colorOnTertiaryContainer">@color/uc_onTertiaryContainer</item>
+        <item name="colorError">@color/uc_error</item>
+        <item name="colorOnError">@color/uc_onError</item>
+        <item name="colorErrorContainer">@color/uc_errorContainer</item>
+        <item name="colorOnErrorContainer">@color/uc_onErrorContainer</item>
+        <item name="android:colorBackground">@color/uc_surface</item>
+        <item name="colorOnBackground">@color/uc_onSurface</item>
+        <item name="colorSurface">@color/uc_surface</item>
+        <item name="colorOnSurface">@color/uc_onSurface</item>
+        <item name="colorSurfaceVariant">@color/uc_surfaceVariant</item>
+        <item name="colorOnSurfaceVariant">@color/uc_onSurfaceVariant</item>
+        <item name="colorOutline">@color/uc_outline</item>
+        <item name="colorOutlineVariant">@color/uc_outlineVariant</item>
+        <item name="colorSurfaceInverse">@color/uc_inverseSurface</item>
+        <item name="colorOnSurfaceInverse">@color/uc_inverseOnSurface</item>
+        <item name="colorPrimaryInverse">@color/uc_inversePrimary</item>
+        <item name="colorSurfaceContainerLowest">@color/uc_cLowest</item>
+        <item name="colorSurfaceContainerLow">@color/uc_cLow</item>
+        <item name="colorSurfaceContainer">@color/uc_container</item>
+        <item name="colorSurfaceContainerHigh">@color/uc_cHigh</item>
+        <item name="colorSurfaceContainerHighest">@color/uc_cHighest</item>
+        <item name="android:windowLightStatusBar">@bool/light_bars</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+    </style>
+
+    <!-- Camera screen: always dark, it sits on top of the live picture -->
+    <style name="Theme.UsbCam.Camera" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">@color/dk_primary</item>
+        <item name="colorOnPrimary">@color/dk_onPrimary</item>
+        <item name="colorPrimaryContainer">@color/dk_primaryContainer</item>
+        <item name="colorOnPrimaryContainer">@color/dk_onPrimaryContainer</item>
+        <item name="colorSecondary">@color/dk_secondary</item>
+        <item name="colorOnSecondary">@color/dk_onSecondary</item>
+        <item name="colorSecondaryContainer">@color/dk_secondaryContainer</item>
+        <item name="colorOnSecondaryContainer">@color/dk_onSecondaryContainer</item>
+        <item name="colorTertiary">@color/dk_tertiary</item>
+        <item name="colorOnTertiary">@color/dk_onTertiary</item>
+        <item name="colorTertiaryContainer">@color/dk_tertiaryContainer</item>
+        <item name="colorOnTertiaryContainer">@color/dk_onTertiaryContainer</item>
+        <item name="colorError">@color/dk_error</item>
+        <item name="colorOnError">@color/dk_onError</item>
+        <item name="colorErrorContainer">@color/dk_errorContainer</item>
+        <item name="colorOnErrorContainer">@color/dk_onErrorContainer</item>
+        <item name="android:colorBackground">@color/dk_surface</item>
+        <item name="colorOnBackground">@color/dk_onSurface</item>
+        <item name="colorSurface">@color/dk_surface</item>
+        <item name="colorOnSurface">@color/dk_onSurface</item>
+        <item name="colorSurfaceVariant">@color/dk_surfaceVariant</item>
+        <item name="colorOnSurfaceVariant">@color/dk_onSurfaceVariant</item>
+        <item name="colorOutline">@color/dk_outline</item>
+        <item name="colorOutlineVariant">@color/dk_outlineVariant</item>
+        <item name="colorSurfaceInverse">@color/dk_inverseSurface</item>
+        <item name="colorOnSurfaceInverse">@color/dk_inverseOnSurface</item>
+        <item name="colorPrimaryInverse">@color/dk_inversePrimary</item>
+        <item name="colorSurfaceContainerLowest">@color/dk_cLowest</item>
+        <item name="colorSurfaceContainerLow">@color/dk_cLow</item>
+        <item name="colorSurfaceContainer">@color/dk_container</item>
+        <item name="colorSurfaceContainerHigh">@color/dk_cHigh</item>
+        <item name="colorSurfaceContainerHighest">@color/dk_cHighest</item>
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

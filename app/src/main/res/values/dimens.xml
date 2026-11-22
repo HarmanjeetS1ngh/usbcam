@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="space_4">4dp</dimen>
+    <dimen name="space_8">8dp</dimen>
+    <dimen name="space_12">12dp</dimen>
+    <dimen name="space_16">16dp</dimen>
+    <dimen name="space_24">24dp</dimen>
+    <dimen name="touch_min">48dp</dimen>
+    <dimen name="fab_clearance">96dp</dimen>
+    <dimen name="status_icon">40dp</dimen>
+    <dimen name="cam_button">56dp</dimen>
+    <dimen name="cam_ring">76dp</dimen>
+    <dimen name="cam_panel_end">96dp</dimen>
+</resources>
