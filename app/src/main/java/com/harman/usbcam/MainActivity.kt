@@ -56,7 +56,6 @@ class MainActivity : Activity() {
 
     private fun begin() {
         streamer?.stop()
-        Log.i("UsbCam", "device ${Build.MANUFACTURER} ${Build.MODEL} sdk=${Build.VERSION.SDK_INT}\ncameras:\n$cams\nencoders:\n$caps")
         val i = intent
         val cfg = Streamer.Config(
             w = i.getIntExtra("w", 1920),
@@ -72,7 +71,7 @@ class MainActivity : Activity() {
         try { s.start(cfg) } catch (e: Exception) { status("Start failed: ${e.message}") }
     }
 
-    private fun status(msg: String) { last = msg; Log.i("UsbCam", msg); render() }
+    private fun status(msg: String) { last = msg; render() }
     private fun render() { tv.text = "UsbCam M1\n$last\n\nCameras (use: --es cam <id>):\n$cams\nEncoders:\n$caps" }
 
     override fun onDestroy() {
