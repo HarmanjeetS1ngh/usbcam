@@ -7,6 +7,8 @@ import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CaptureRequest
+import android.hardware.camera2.params.OutputConfiguration
+import android.hardware.camera2.params.SessionConfiguration
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
@@ -29,10 +31,11 @@ import java.util.concurrent.TimeUnit
  */
 class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit) {
 
-    class Config(val w: Int, val h: Int, val fps: Int, val bitrate: Int, val port: Int, val facing: Int)
+    class Config(val w: Int, val h: Int, val fps: Int, val bitrate: Int, val port: Int, val facing: Int, val cam: String? = null)
     private class Pkt(val data: ByteArray, val key: Boolean)
 
     @Volatile private var running = false
+    @Volatile private var info = ""
     @Volatile private var resync = true
     @Volatile private var codecConfig: ByteArray? = null
     private var codec: MediaCodec? = null
@@ -67,9 +70,12 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
         c.start()
         codec = c
 
+        val mgr = ctx.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+        val target = resolve(mgr, cfg)
+        info = "cam ${target.second ?: target.first} ${cfg.w}x${cfg.h}@${cfg.fps}"
         spawn("drain") { drain(c) }
         spawn("net") { serve(cfg.port, c) }
-        openCamera(cfg, input)
+        openCamera(mgr, target, cfg, input)
     }
 
     fun stop() {
@@ -121,13 +127,13 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
         try {
             val ss = ServerSocket(port, 1, InetAddress.getByName("127.0.0.1"))
             server = ss
-            onStatus("Waiting for PC on port $port")
+            onStatus("Waiting for PC on port $port | $info")
             while (running) {
                 val s = try { ss.accept() } catch (_: Exception) { break }
-                onStatus("PC connected, streaming")
+                onStatus("PC connected, streaming | $info")
                 try { pump(s, c) } catch (_: Exception) {}
                 try { s.close() } catch (_: Exception) {}
-                if (running) onStatus("PC disconnected, waiting on port $port")
+                if (running) onStatus("PC disconnected, waiting on port $port | $info")
             }
         } catch (e: Exception) {
             onStatus("Server error: ${e.message}")
@@ -148,12 +154,27 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
         }
     }
 
-    @SuppressLint("MissingPermission")
-    private fun openCamera(cfg: Config, surface: Surface) {
-        val mgr = ctx.getSystemService(Context.CAMERA_SERVICE) as CameraManager
-        val id = mgr.cameraIdList.firstOrNull {
+    /** Pick camera: explicit id (normal or physical sub-camera of a logical one), else first with requested facing. */
+    private fun resolve(mgr: CameraManager, cfg: Config): Pair<String, String?> {
+        val ids = mgr.cameraIdList
+        val want = cfg.cam
+        if (want != null) {
+            if (want in ids) return want to null
+            if (Build.VERSION.SDK_INT >= 28) {
+                for (id in ids) {
+                    if (mgr.getCameraCharacteristics(id).physicalCameraIds.contains(want)) return id to want
+                }
+            }
+        }
+        val id = ids.firstOrNull {
             mgr.getCameraCharacteristics(it).get(CameraCharacteristics.LENS_FACING) == cfg.facing
-        } ?: mgr.cameraIdList[0]
+        } ?: ids[0]
+        return id to null
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun openCamera(mgr: CameraManager, target: Pair<String, String?>, cfg: Config, surface: Surface) {
+        val (id, phys) = target
         val t = HandlerThread("cam").also { it.start() }
         camThread = t
         val h = Handler(t.looper)
@@ -161,8 +182,7 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
         mgr.openCamera(id, object : CameraDevice.StateCallback() {
             override fun onOpened(cam: CameraDevice) {
                 camera = cam
-                @Suppress("DEPRECATION")
-                cam.createCaptureSession(listOf(surface), object : CameraCaptureSession.StateCallback() {
+                val cb = object : CameraCaptureSession.StateCallback() {
                     override fun onConfigured(s: CameraCaptureSession) {
                         session = s
                         val req = cam.createCaptureRequest(CameraDevice.TEMPLATE_RECORD).apply {
@@ -173,9 +193,17 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
                         s.setRepeatingRequest(req, null, h)
                     }
                     override fun onConfigureFailed(s: CameraCaptureSession) {
-                        onStatus("Camera session failed: ${cfg.w}x${cfg.h}@${cfg.fps} likely unsupported")
+                        onStatus("Camera session failed: $info unsupported on this camera")
                     }
-                }, h)
+                }
+                if (phys != null && Build.VERSION.SDK_INT >= 28) {
+                    val oc = OutputConfiguration(surface).apply { setPhysicalCameraId(phys) }
+                    val sc = SessionConfiguration(SessionConfiguration.SESSION_REGULAR, listOf(oc), { r -> h.post(r) }, cb)
+                    cam.createCaptureSession(sc)
+                } else {
+                    @Suppress("DEPRECATION")
+                    cam.createCaptureSession(listOf(surface), cb, h)
+                }
             }
             override fun onDisconnected(cam: CameraDevice) { cam.close() }
             override fun onError(cam: CameraDevice, error: Int) { cam.close(); onStatus("Camera error $error") }

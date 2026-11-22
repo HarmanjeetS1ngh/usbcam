@@ -5,6 +5,11 @@ import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
+import android.media.MediaCodec
+import android.util.Log
+import android.widget.ScrollView
 import android.media.MediaCodecList
 import android.os.Build
 import android.os.Bundle
@@ -12,7 +17,7 @@ import android.view.WindowManager
 import android.widget.TextView
 
 /**
- * M1: no preview (saves GPU/CPU/heat). Configure from the PC via intent extras:
+ * Extra: --es cam <id> picks a camera (normal id or physical id, see on-screen list). M1: no preview (saves GPU/CPU/heat). Configure from the PC via intent extras:
  *   adb shell am start -n com.harman.usbcam/.MainActivity --ei w 3840 --ei h 2160 --ei fps 30 --ei br 40000000
  */
 class MainActivity : Activity() {
@@ -20,17 +25,18 @@ class MainActivity : Activity() {
     private var streamer: Streamer? = null
     private var last = "Starting..."
     private val caps by lazy { capsText() }
+    private val cams by lazy { camsText().also { Log.i("UsbCam", it) } }
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         tv = TextView(this).apply {
             setPadding(32, 32, 32, 32)
-            textSize = 13f
+            textSize = 11f
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.BLACK)
         }
-        setContentView(tv)
+        setContentView(ScrollView(this).apply { addView(tv) })
         render()
         if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED)
             requestPermissions(arrayOf(Manifest.permission.CAMERA), 1)
@@ -57,7 +63,8 @@ class MainActivity : Activity() {
             fps = i.getIntExtra("fps", 30),
             bitrate = i.getIntExtra("br", 12_000_000),
             port = i.getIntExtra("port", 5000),
-            facing = i.getIntExtra("facing", 1) // 1 = back, 0 = front
+            facing = i.getIntExtra("facing", 1), // 1 = back, 0 = front
+            cam = i.getStringExtra("cam")
         )
         val s = Streamer(this) { msg -> runOnUiThread { status(msg) } }
         streamer = s
@@ -65,11 +72,36 @@ class MainActivity : Activity() {
     }
 
     private fun status(msg: String) { last = msg; render() }
-    private fun render() { tv.text = "UsbCam M1\n$last\n\nEncoders:\n$caps" }
+    private fun render() { tv.text = "UsbCam M1\n$last\n\nCameras (use: --es cam <id>):\n$cams\nEncoders:\n$caps" }
 
     override fun onDestroy() {
         streamer?.stop()
         super.onDestroy()
+    }
+
+    private fun describe(c: CameraCharacteristics, label: String, indent: String): String {
+        val face = when (c.get(CameraCharacteristics.LENS_FACING)) { 0 -> "front"; 1 -> "back"; else -> "ext" }
+        val fl = c.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)?.joinToString("/") ?: "?"
+        val best = c.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+            ?.getOutputSizes(MediaCodec::class.java)?.maxByOrNull { it.width.toLong() * it.height }
+        val fps = c.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)?.maxOfOrNull { it.upper } ?: 0
+        return "$indent$label ($face) f=${fl}mm max ${best?.width}x${best?.height} fps<=$fps\n"
+    }
+
+    private fun camsText(): String {
+        val sb = StringBuilder()
+        try {
+            val mgr = getSystemService(CAMERA_SERVICE) as CameraManager
+            for (id in mgr.cameraIdList) {
+                val c = mgr.getCameraCharacteristics(id)
+                sb.append(describe(c, "cam $id", ""))
+                if (Build.VERSION.SDK_INT >= 28) for (pid in c.physicalCameraIds) {
+                    try { sb.append(describe(mgr.getCameraCharacteristics(pid), "phys $pid", "   ")) }
+                    catch (_: Exception) { sb.append("   phys $pid (no info)\n") }
+                }
+            }
+        } catch (e: Exception) { sb.append("camera list failed: ${e.message}\n") }
+        return sb.toString()
     }
 
     private fun capsText(): String {
