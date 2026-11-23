@@ -121,6 +121,7 @@ class MainActivity : AppCompatActivity() {
         bindViews()
         wireViews()
         fillCam(); fillModes(); fillFps(); fillBr()
+        refreshStatus() // paint the real state right away (also after rotation)
 
         if (b == null) { // not after a rotation: the service is already running and must not get the launch extras again
             if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
@@ -159,7 +160,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onResume() {
-        super.onResume(); ui.post(tick)
+        super.onResume(); lastIcon = 0; ui.post(tick)
         if (dirty) showPending()
     }
     override fun onPause() { ui.removeCallbacks(tick); super.onPause() }
@@ -476,8 +477,9 @@ class MainActivity : AppCompatActivity() {
         if (st.icon != lastIcon) { // only when it changes, so the live animation is not restarted every second
             lastIcon = st.icon
             statusIcon.setImageResource(st.icon)
-            (statusIcon.drawable as? android.graphics.drawable.Animatable)?.start()
         }
+        // keep the live animation running: it stops on rotation / when the window is hidden, so re-start it whenever it is not running
+        (statusIcon.drawable as? android.graphics.drawable.Animatable)?.let { if (!it.isRunning) it.start() }
         statusIcon.imageTintList = ColorStateList.valueOf(fg)
         statusTitle.setText(st.title); statusTitle.setTextColor(fg)
         val warm = s.guardStage == 1 && st.action == 0 && s.camEnabled
