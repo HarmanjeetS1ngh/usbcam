@@ -494,8 +494,13 @@ class MainActivity : AppCompatActivity() {
         chipBattery.setChipIconResource(if (s.plugged) R.drawable.ic_battery_charging else R.drawable.ic_battery)
         chipBattery.contentDescription = if (s.plugged && s.battLevel >= 0) getString(R.string.chip_battery_charging, s.battLevel) else chipBattery.text
         chipTemp.text = getString(R.string.chip_temp, s.battTemp)
+        // chips sit on a solid theme surface (not on the gradient) so text and icon always have ~15:1 contrast in light, dark and dynamic colours
+        val chipBg = attr(MR.attr.colorSurface); val chipFg = attr(MR.attr.colorOnSurface)
         for (c in listOf(chipBattery, chipTemp)) {
-            c.setTextColor(fg); c.chipIconTint = ColorStateList.valueOf(fg); c.chipStrokeColor = ColorStateList.valueOf(fg)
+            c.chipBackgroundColor = ColorStateList.valueOf(chipBg)
+            c.setTextColor(chipFg)
+            c.chipIconTint = ColorStateList.valueOf(chipFg)
+            c.chipStrokeColor = ColorStateList.valueOf(attr(MR.attr.colorOutlineVariant))
         }
 
         if (swCam.isChecked != s.camEnabled) { syncing = true; swCam.isChecked = s.camEnabled; syncing = false }

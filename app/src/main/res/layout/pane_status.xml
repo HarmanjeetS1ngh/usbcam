@@ -19,10 +19,10 @@
             </LinearLayout>
             <com.google.android.material.chip.ChipGroup android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/space_12">
-                <com.google.android.material.chip.Chip android:id="@+id/chip_battery" style="@style/Widget.Material3.Chip.Assist"
+                <com.google.android.material.chip.Chip android:id="@+id/chip_battery" style="@style/Widget.Material3.Chip.Assist" android:textColor="?attr/colorOnSurface" android:textSize="14sp" app:chipBackgroundColor="?attr/colorSurface" app:chipIconTint="?attr/colorOnSurface"
                     android:layout_width="wrap_content" android:layout_height="wrap_content"
                     android:clickable="false" android:focusable="false" app:chipIcon="@drawable/ic_battery" app:chipIconVisible="true" />
-                <com.google.android.material.chip.Chip android:id="@+id/chip_temp" style="@style/Widget.Material3.Chip.Assist"
+                <com.google.android.material.chip.Chip android:id="@+id/chip_temp" style="@style/Widget.Material3.Chip.Assist" android:textColor="?attr/colorOnSurface" android:textSize="14sp" app:chipBackgroundColor="?attr/colorSurface" app:chipIconTint="?attr/colorOnSurface"
                     android:layout_width="wrap_content" android:layout_height="wrap_content"
                     android:clickable="false" android:focusable="false" app:chipIcon="@drawable/ic_thermostat" app:chipIconVisible="true" />
             </com.google.android.material.chip.ChipGroup>
