@@ -170,3 +170,4 @@ The user prefers direct, honest feedback, and narrow answers over long lists. Te
 - Version 0.7. RELEASE_NOTES.md rewritten: the app's "What's new" is the notes of the LATEST release = RELEASE_NOTES.md at the time of that build, so it must be edited before every push (it was stale because it still held the 0.6 text).
 - Update download dialog starts indeterminate ("Getting the update ready…", the GitHub redirect can take several seconds) and switches to the % bar when the first data arrives.
 - "Check for updates" button: LabelMedium text, smaller side padding, single line; version text BodyMedium, so the version no longer wraps.
+- M7d: tapping an open drop-down closes it. Cause: the dismiss listener cleared focus at once, which made Material's drop-down think it was closed, so the same tap's ACTION_UP re-opened it. Focus is now released 450 ms later and only if the list is not showing (releaseIdleDropdownFocus). Untested on device.

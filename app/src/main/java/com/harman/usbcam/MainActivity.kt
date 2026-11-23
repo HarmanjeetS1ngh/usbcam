@@ -171,6 +171,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** Drops focus from drop-downs that are closed. Delayed after a dismiss so the tap that closed the list is not read as "open it again". */
+    private fun releaseIdleDropdownFocus() {
+        if (!::ddCam.isInitialized || isDestroyed) return
+        for (d in arrayOf(ddCam, ddRes, ddFps, ddBr)) if (!d.isPopupShowing && d.hasFocus()) d.clearFocus()
+    }
+
     override fun onNewIntent(i: Intent) {
         super.onNewIntent(i)
         intent = i
@@ -359,7 +365,7 @@ class MainActivity : AppCompatActivity() {
         ddFps.setOnItemClickListener { _, _, pos, _ -> if (pos != fpsIdx) { fpsIdx = pos; changed() } }
         ddBr.setOnItemClickListener { _, _, pos, _ -> if (pos != brIdx) { brIdx = pos; changed() } }
         // after a pick, or when the list is closed without a pick, the field loses its selected state
-        for (d in arrayOf(ddCam, ddRes, ddFps, ddBr)) d.setOnDismissListener { ui.post { releaseDropdownFocus() } }
+        for (d in arrayOf(ddCam, ddRes, ddFps, ddBr)) d.setOnDismissListener { ui.postDelayed({ releaseIdleDropdownFocus() }, 450) }
         chipZoomed.setOnClickListener { explain(R.string.chip_zoomed, R.string.chip_zoomed_why) }
         chipUntested.setOnClickListener { explain(R.string.chip_untested, R.string.chip_untested_why) }
 

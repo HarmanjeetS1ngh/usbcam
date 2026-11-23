@@ -6,3 +6,4 @@
 - Clearer ISO icon in the camera controls
 - Shorter “Camera preview” button
 - Updates now show a “getting the update ready” state before the download bar appears
+- Tapping an open drop-down closes it again
