@@ -164,3 +164,4 @@ The user prefers direct, honest feedback, and narrow answers over long lists. Te
 - MainActivity: auto-check in onStart (max every 30 min, silent on errors), dialog with version + notes + Update/Later, progress dialog with Cancel; Advanced > Updates row shows "Version x (build n)" + "Check for updates" (Snackbar: up to date / couldn't check).
 - Only builds made by Actions after this change have run-number versionCodes; the installed 0.5 (versionCode 5) updates normally. Every push now creates a release.
 - Untested: everything on device (download redirect, installer hand-off, unknown-sources flow, rotation during download: download finishes and installer opens, progress dialog is lost).
+- M7b: Reset to recommended settings moved to the end of the Streaming group (layout only).
