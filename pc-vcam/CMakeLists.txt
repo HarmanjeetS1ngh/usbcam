@@ -18,3 +18,15 @@ target_compile_definitions(usbcam_vcam PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
 target_include_directories(usbcam_vcam PRIVATE ${FFMPEG_DIR}/include)
 target_link_directories(usbcam_vcam PRIVATE ${FFMPEG_DIR}/lib)
 target_link_libraries(usbcam_vcam PRIVATE avcodec avutil ws2_32 mfplat mf mfuuid mfsensorgroup strmiids uuid ole32 pdh gdi32 user32 advapi32)
+
+# 3) the UsbCam app: window with live preview + controls + the virtual camera in one program (needs SDL2 and Dear ImGui)
+if(IMGUI_DIR AND SDL2_DIR)
+  add_executable(UsbCam WIN32 usbcam_vcam.cpp usbcam_gui.inc
+    ${IMGUI_DIR}/imgui.cpp ${IMGUI_DIR}/imgui_draw.cpp ${IMGUI_DIR}/imgui_tables.cpp ${IMGUI_DIR}/imgui_widgets.cpp
+    ${IMGUI_DIR}/backends/imgui_impl_sdl2.cpp ${IMGUI_DIR}/backends/imgui_impl_sdlrenderer2.cpp)
+  target_compile_definitions(UsbCam PRIVATE UCV_GUI _CRT_SECURE_NO_WARNINGS NOMINMAX)
+  target_include_directories(UsbCam PRIVATE ${FFMPEG_DIR}/include ${SDL2_DIR}/include ${IMGUI_DIR} ${IMGUI_DIR}/backends ${CMAKE_CURRENT_SOURCE_DIR})
+  target_link_directories(UsbCam PRIVATE ${FFMPEG_DIR}/lib ${SDL2_DIR}/lib/x64)
+  target_link_libraries(UsbCam PRIVATE avcodec avutil SDL2 ws2_32 mfplat mf mfuuid mfsensorgroup strmiids uuid ole32 pdh gdi32 user32 advapi32 shell32)
+  target_link_options(UsbCam PRIVATE /ENTRY:mainCRTStartup)
+endif()

@@ -4,7 +4,9 @@
 // Phone unplugged / camera off / no stream: writes a "Waiting for phone" picture instead, so apps never see a dead camera.
 // Control (tray): 127.0.0.1:5003, one JSON line in, one JSON line out: status | mirror {on} | quit.
 #define WIN32_LEAN_AND_MEAN
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <windows.h>
@@ -41,6 +43,25 @@ struct Cfg { std::string cam; int w = 0, h = 0, fps = 0, br = 0, ll = -1; bool s
 static std::atomic<bool> g_run{true};
 static std::atomic<int> g_mirror{0};
 static std::atomic<bool> g_vcam_on{false};
+static std::atomic<bool> g_gui_active{false};   // GUI window visible => keep the phone streaming
+static std::atomic<bool> g_restart{false};      // GUI changed the picture settings => restart the phone session
+static std::mutex g_cfgmu;                      // guards g_cfg (the GUI changes it while a session runs)
+static std::mutex g_infomu;                     // guards the three strings below
+static std::string g_caps, g_pstatus, g_actual; // phone `caps` reply, last `status` reply, what the phone is really sending
+static std::mutex g_prevmu;                     // preview frame (newest wins, only kept while the GUI is open)
+static AVFrame* g_prev = nullptr;
+static bool g_prev_new = false;
+static std::atomic<int64_t> g_prev_us{0};
+static bool g_vcam_supported = false;
+static std::string g_vcam_why;
+static void preview_push(AVFrame* f) {
+    std::lock_guard<std::mutex> l(g_prevmu);
+    if (!g_prev) return;
+    av_frame_unref(g_prev);
+    if (av_frame_ref(g_prev, f) < 0) return;
+    g_prev_new = true;
+    g_prev_us = now_us();
+}
 
 // ---------- log (short, to %TEMP%\usbcam-vcam.log, also to the console) ----------
 static FILE* g_log = nullptr;
@@ -97,6 +118,9 @@ static bool consumer_recent(int64_t within_ms) {
     int64_t t = h->src_tick_ms;
     return t != 0 && (qpc_ms() - t) < within_ms;
 }
+
+// the phone must stream while the GUI window is visible or an app has the virtual camera open
+static bool need_stream() { return g_gui_active.load() || consumer_recent(2000); }
 
 // ---------- status text (for the placeholder and the tray) ----------
 static std::mutex g_smu;
@@ -285,12 +309,30 @@ static void placeholder_thread() {
 
 // ---------- process / network helpers (same as the viewer) ----------
 static std::string run_out(const std::string& cmd) {
+    // runs `cmd.exe /c <cmd>` without a console window (this also runs inside the windowed app) and returns its output
     std::string out;
-    FILE* p = _popen(cmd.c_str(), "r");
-    if (!p) return out;
-    char b[256];
-    while (fgets(b, sizeof b, p)) out += b;
-    _pclose(p);
+    SECURITY_ATTRIBUTES sa = { sizeof sa, nullptr, TRUE };
+    HANDLE rd = nullptr, wr = nullptr;
+    if (!CreatePipe(&rd, &wr, &sa, 0)) return out;
+    SetHandleInformation(rd, HANDLE_FLAG_INHERIT, 0);
+    HANDLE nul = CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, &sa, OPEN_EXISTING, 0, nullptr);
+    STARTUPINFOW si = {}; si.cb = sizeof si;
+    si.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW; si.wShowWindow = SW_HIDE;
+    si.hStdOutput = wr; si.hStdError = wr; si.hStdInput = nul;
+    std::wstring w = L"cmd.exe /d /c ";
+    w.append(cmd.begin(), cmd.end());
+    std::vector<wchar_t> buf(w.begin(), w.end()); buf.push_back(0);
+    PROCESS_INFORMATION pi = {};
+    BOOL ok = CreateProcessW(nullptr, buf.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
+    CloseHandle(wr);
+    if (nul != INVALID_HANDLE_VALUE) CloseHandle(nul);
+    if (ok) {
+        char b[512]; DWORD n = 0;
+        while (ReadFile(rd, b, sizeof b, &n, nullptr) && n) out.append(b, n);
+        if (WaitForSingleObject(pi.hProcess, 8000) == WAIT_TIMEOUT) TerminateProcess(pi.hProcess, 1);
+        CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
+    }
+    CloseHandle(rd);
     while (!out.empty() && (out.back() == '\n' || out.back() == '\r' || out.back() == ' ')) out.pop_back();
     return out;
 }
@@ -367,7 +409,7 @@ static std::atomic<SOCKET> g_vid{INVALID_SOCKET};
 
 static void session() {
     SOCKET ctl = INVALID_SOCKET; std::string r;
-    for (int i = 0; i < 8 && g_run && consumer_recent(2000); i++) {
+    for (int i = 0; i < 8 && g_run && need_stream(); i++) {
         ctl = tcp_connect(5002, 3000);
         if (ctl != INVALID_SOCKET) {
             if (ctl_cmd(ctl, "{\"cmd\":\"hello\"}", r) && r.find("\"ok\":true") != std::string::npos) break;
@@ -377,6 +419,7 @@ static void session() {
         sleep_ms(1200);
     }
     if (ctl == INVALID_SOCKET) { set_status("cannot reach the UsbCam app", "Open the UsbCam app on the phone"); return; }
+    if (g_gui_active) { std::string cr; if (ctl_cmd(ctl, "{\"cmd\":\"caps\"}", cr)) { std::lock_guard<std::mutex> l(g_infomu); g_caps = cr; } }
 
     int64_t best = INT64_MAX, off = 0, off2 = 0; bool has2 = false;
     for (int i = 0; i < 6; i++) {
@@ -387,13 +430,15 @@ static void session() {
     }
     g_off = off; g_off_ok = best != INT64_MAX; g_off2 = off2; g_off2_ok = has2; g_dom = 0;
 
+    g_restart = false;
+    Cfg cf; { std::lock_guard<std::mutex> l(g_cfgmu); cf = g_cfg; }
     std::string st = "{\"cmd\":\"start\",\"hdr\":true";
-    if (!g_cfg.cam.empty()) st += ",\"cam\":\"" + g_cfg.cam + "\"";
-    if (g_cfg.w) st += ",\"w\":" + std::to_string(g_cfg.w);
-    if (g_cfg.h) st += ",\"h\":" + std::to_string(g_cfg.h);
-    if (g_cfg.fps) st += ",\"fps\":" + std::to_string(g_cfg.fps);
-    if (g_cfg.br) st += ",\"br\":" + std::to_string(g_cfg.br);
-    if (g_cfg.ll >= 0) st += ",\"ll\":" + std::to_string(g_cfg.ll);
+    if (!cf.cam.empty()) st += ",\"cam\":\"" + cf.cam + "\"";
+    if (cf.w) st += ",\"w\":" + std::to_string(cf.w);
+    if (cf.h) st += ",\"h\":" + std::to_string(cf.h);
+    if (cf.fps) st += ",\"fps\":" + std::to_string(cf.fps);
+    if (cf.br) st += ",\"br\":" + std::to_string(cf.br);
+    if (cf.ll >= 0) st += ",\"ll\":" + std::to_string(cf.ll);
     st += "}";
     if (!ctl_cmd(ctl, st, r) || r.find("\"ok\":true") == std::string::npos) {
         ulog("[phone] start refused: %s", r.c_str());
@@ -403,6 +448,7 @@ static void session() {
     }
     size_t a = r.find("\"actual\":");
     if (a != std::string::npos) ulog("[phone] %s", r.c_str() + a);
+    { std::lock_guard<std::mutex> l(g_infomu); g_actual = a != std::string::npos ? r.substr(a + 9) : std::string(); }
 
     SOCKET vid = INVALID_SOCKET;
     for (int i = 0; i < 6 && g_run && vid == INVALID_SOCKET; i++) { vid = tcp_connect(5000, 4000); if (vid == INVALID_SOCKET) sleep_ms(400); }
@@ -414,9 +460,16 @@ static void session() {
 
     std::vector<uint8_t> buf(1 << 20);
     uint8_t h[13];
-    bool idle_stop = false;
+    bool idle_stop = false, restart = false;
+    int64_t t_pst = 0;
     while (g_run) {
-        if (!consumer_recent((int64_t)g_cfg.idle_s * 1000)) { idle_stop = true; break; }   // no app has used the camera for a while
+        if (g_restart.exchange(false)) { restart = true; break; }                          // the GUI changed the picture settings
+        if (!g_gui_active && !consumer_recent((int64_t)g_cfg.idle_s * 1000)) { idle_stop = true; break; }   // no app has used the camera for a while
+        if (g_gui_active && now_us() - t_pst > 4000000) {                                  // battery / temperature for the window
+            t_pst = now_us();
+            std::string sr;
+            if (ctl_cmd(ctl, "{\"cmd\":\"status\"}", sr)) { std::lock_guard<std::mutex> l(g_infomu); g_pstatus = sr; }
+        }
         if (!read_n(vid, h, 13)) break;
         uint32_t len = ((uint32_t)h[0] << 24) | (h[1] << 16) | (h[2] << 8) | h[3];
         int64_t pts = 0; for (int i = 4; i < 12; i++) pts = (pts << 8) | h[i];
@@ -445,20 +498,22 @@ static void session() {
                 if (g_dom == 0) { if (lm > -50 && lm < 3000) g_dom = 2; else if (lb > -50 && lb < 3000) g_dom = 1; else g_dom = 3; }
                 if (g_dom == 1 || g_dom == 2) { g_lat_sum_us += (int64_t)((g_dom == 2 ? lm : lb) * 1000.0); g_lat_n++; }
             }
+            if (g_gui_active) preview_push(out);
             t0 = t2;
         }
     }
     dec_close(d);
     std::string dummy;
-    if (!g_run || idle_stop) ctl_cmd(ctl, "{\"cmd\":\"stop\"}", dummy);   // free the phone camera when nobody needs it
+    if (!g_run || idle_stop || restart) ctl_cmd(ctl, "{\"cmd\":\"stop\"}", dummy);   // free the phone camera when nobody needs it
     closesocket(vid); g_vid = INVALID_SOCKET; closesocket(ctl);
-    if (idle_stop) { ulog("[idle] no app is using the camera: phone stream stopped"); set_status("idle (no app is using the camera)", "Waiting for an app to open the camera"); g_last_live_us = 0; }
+    if (restart) { ulog("[gui] restarting the phone stream with the new settings"); g_last_live_us = 0; set_status("restarting", "Applying the new picture settings"); }
+    else if (idle_stop) { ulog("[idle] no app is using the camera: phone stream stopped"); set_status("idle (no app is using the camera)", "Waiting for an app to open the camera"); g_last_live_us = 0; }
     else if (g_run) set_status("connection lost, retrying", "Connection to the phone lost, reconnecting");
 }
 
 static void net_main() {
     while (g_run) {
-        if (!consumer_recent(2000)) {
+        if (!need_stream()) {
             if (get_status().rfind("idle", 0) != 0 && get_status().rfind("starting", 0) != 0) set_status("idle (no app is using the camera)", "Waiting for an app to open the camera");
             sleep_ms(150); continue;
         }
@@ -611,6 +666,38 @@ static bool com_registered() {
     return true;
 }
 
+static IMFVirtualCamera* g_vc = nullptr;
+// creates or removes the "UsbCam Camera" virtual camera (main thread only)
+static bool vcam_enable(bool on, std::string& err) {
+    if (on) {
+        if (g_vc) return true;
+        IMFVirtualCamera* vc = nullptr;
+        const GUID cats[3] = { kCatVideoCamera, kCatVideo, kCatCapture };
+        HRESULT hr = MFCreateVirtualCamera(MFVirtualCameraType_SoftwareCameraSource, MFVirtualCameraLifetime_Session, MFVirtualCameraAccess_CurrentUser,
+                                           UCV_CAMERA_NAME, UCV_CLSID_STR, cats, 3, &vc);
+        if (SUCCEEDED(hr)) hr = vc->Start(nullptr);
+        if (FAILED(hr)) {
+            char b[120]; snprintf(b, sizeof b, "Cannot create the virtual camera (0x%08lx)", (unsigned long)hr);
+            ulog("[error] %s", b); err = b;
+            if (vc) vc->Release();
+            return false;
+        }
+        g_vc = vc; g_vcam_on = true;
+        ulog("[vcam] \"UsbCam Camera\" is available to apps");
+        return true;
+    }
+    if (g_vc) {
+        g_vcam_on = false;
+        g_vc->Stop(); g_vc->Remove(); g_vc->Shutdown(); g_vc->Release(); g_vc = nullptr;
+        ulog("[vcam] camera removed");
+    }
+    return true;
+}
+
+#ifdef UCV_GUI
+#include "usbcam_gui.inc"
+#endif
+
 int main(int argc, char** argv) {
     setvbuf(stdout, nullptr, _IONBF, 0);
     for (int i = 1; i < argc; i++) {
@@ -631,42 +718,67 @@ int main(int argc, char** argv) {
     }
     g_mirror = g_cfg.mirror ? 1 : 0;
     log_open();
-    HANDLE one = CreateMutexW(nullptr, FALSE, L"Local\\UsbCamVcamFeeder");
-    if (one && GetLastError() == ERROR_ALREADY_EXISTS) { ulog("already running"); return 0; }
     WSADATA wsa; WSAStartup(MAKEWORD(2, 2), &wsa);
+    HANDLE one = CreateMutexW(nullptr, FALSE, L"Local\\UsbCamVcamFeeder");
+    if (one && GetLastError() == ERROR_ALREADY_EXISTS) {
+#ifdef UCV_GUI
+        // another copy (for example the tray's background program) is running: ask it to quit, then take over
+        bool got = false;
+        for (int i = 0; i < 12 && !got; i++) {
+            if (i == 0 || i == 6) { SOCKET c = tcp_connect(g_cfg.port, 1000); if (c != INVALID_SOCKET) { std::string rr; ctl_cmd(c, "{\"cmd\":\"quit\"}", rr); closesocket(c); } }
+            CloseHandle(one);
+            sleep_ms(500);
+            one = CreateMutexW(nullptr, FALSE, L"Local\\UsbCamVcamFeeder");
+            if (one && GetLastError() != ERROR_ALREADY_EXISTS) got = true;
+        }
+        if (!got) { MessageBoxW(nullptr, L"UsbCam is already running.", L"UsbCam", MB_OK | MB_ICONINFORMATION); return 0; }
+#else
+        ulog("already running"); return 0;
+#endif
+    }
     CoInitializeEx(nullptr, COINIT_MULTITHREADED);
 
     DWORD build = win_build();
     ulog("usbcam_vcam start (Windows build %lu, mirror %d, idle %d s)", build, g_mirror.load(), g_cfg.idle_s);
+    g_vcam_supported = build >= 22000 && com_registered();
+    if (build < 22000) g_vcam_why = "The virtual camera needs Windows 11. The preview still works.";
+    else if (!com_registered()) g_vcam_why = "The virtual camera is not installed yet. Run pc\\vcam-install.ps1 once.";
+#ifndef UCV_GUI
     if (build < 22000) { ulog("[error] the virtual camera needs Windows 11 (build 22000 or newer)"); return 4; }
     if (!com_registered()) { ulog("[error] camera component not installed: run pc\\vcam-install.ps1 first"); return 3; }
+#endif
     if (FAILED(MFStartup(MF_VERSION, MFSTARTUP_FULL))) { ulog("[error] MFStartup failed"); return 2; }
 
     SOCKET ls = socket(AF_INET, SOCK_STREAM, 0);
     sockaddr_in la = {}; la.sin_family = AF_INET; la.sin_port = htons((uint16_t)g_cfg.port); inet_pton(AF_INET, "127.0.0.1", &la.sin_addr);
-    if (bind(ls, (sockaddr*)&la, sizeof la) != 0 || listen(ls, 4) != 0) { ulog("[error] control port %d is busy", g_cfg.port); return 5; }
+    bool ctl_ok = !(bind(ls, (sockaddr*)&la, sizeof la) != 0 || listen(ls, 4) != 0);
+    if (!ctl_ok) { ulog("[error] control port %d is busy", g_cfg.port);
+#ifndef UCV_GUI
+        return 5;
+#endif
+    }
 
-    IMFVirtualCamera* vc = nullptr;
-    const GUID cats[3] = { kCatVideoCamera, kCatVideo, kCatCapture };
-    HRESULT hr = MFCreateVirtualCamera(MFVirtualCameraType_SoftwareCameraSource, MFVirtualCameraLifetime_Session, MFVirtualCameraAccess_CurrentUser,
-                                       UCV_CAMERA_NAME, UCV_CLSID_STR, cats, 3, &vc);
-    if (SUCCEEDED(hr)) hr = vc->Start(nullptr);
-    if (FAILED(hr)) { ulog("[error] cannot create the virtual camera (0x%08lx)", (unsigned long)hr); if (vc) vc->Release(); return 6; }
-    g_vcam_on = true;
-    ulog("[vcam] \"UsbCam Camera\" is available to apps");
+#ifndef UCV_GUI
+    { std::string e; if (!vcam_enable(true, e)) return 6; }
+#endif
 
     set_status("idle (no app is using the camera)", "Waiting for an app to open the camera");
-    std::thread t_open(sh_open_thread), t_ph(placeholder_thread), t_net(net_main), t_st(stats_thread), t_ctl(ctl_server, ls);
+    std::thread t_open(sh_open_thread), t_ph(placeholder_thread), t_net(net_main), t_st(stats_thread), t_ctl([&] { if (ctl_ok) ctl_server(ls); });
+#ifdef UCV_GUI
+    gui_loop();   // returns when the window is closed
+    g_run = false;
+#else
     int64_t t_start = now_us();
     while (g_run) {
         sleep_ms(200);
         if (g_cfg.seconds && now_us() - t_start > g_cfg.seconds * 1000000LL) g_run = false;
     }
+#endif
     SOCKET v = g_vid.load(); if (v != INVALID_SOCKET) shutdown(v, SD_BOTH);
     t_net.join(); t_ph.join(); t_st.join(); t_open.join(); t_ctl.join();
     closesocket(ls);
     g_vcam_on = false;
-    vc->Stop(); vc->Remove(); vc->Shutdown(); vc->Release();
+    { std::string e; vcam_enable(false, e); }
     MFShutdown();
     ulog("usbcam_vcam stopped, camera removed");
     return 0;

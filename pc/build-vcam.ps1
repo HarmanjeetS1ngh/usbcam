@@ -24,4 +24,14 @@ Get-Process usbcam_vcam -ErrorAction SilentlyContinue | Stop-Process -Force
 Remove-Item "$root\vcam" -Recurse -Force -ErrorAction SilentlyContinue
 gh run download $id -n usbcam-vcam -D "$root\vcam"
 Write-Host "Downloaded to $root\vcam" -ForegroundColor Green
+# desktop shortcut to the UsbCam app
+try {
+    $exe = Join-Path $root 'vcam\UsbCam.exe'
+    if (Test-Path $exe) {
+        $sh = New-Object -ComObject WScript.Shell
+        $lnk = $sh.CreateShortcut((Join-Path ([Environment]::GetFolderPath('Desktop')) 'UsbCam.lnk'))
+        $lnk.TargetPath = $exe; $lnk.WorkingDirectory = Split-Path $exe; $lnk.Save()
+        Write-Host "Desktop shortcut created: UsbCam" -ForegroundColor Green
+    }
+} catch { }
 if (-not $NoInstall) { & "$PSScriptRoot\vcam-install.ps1" -Source "$root\vcam" }
