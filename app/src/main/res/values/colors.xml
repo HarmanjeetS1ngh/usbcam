@@ -68,5 +68,6 @@
     <color name="cam_lock">#FFD600</color>
     <color name="cam_on_lock">#000000</color>
     <color name="cam_panel">#F01D2024</color>
+    <color name="ic_launcher_bg">#140A68</color>
     <color name="white">#FFFFFF</color>
 </resources>

@@ -67,7 +67,7 @@ class MainActivity : AppCompatActivity() {
     private var dirty = false
     private var syncing = false
     private var advOpen = false
-    private var infoOpen = false
+    private var picOpen = false
     private var pending: Snackbar? = null
     private var action = 0 // what the status-card button does: 1 = open app settings, 2 = try again
 
@@ -93,9 +93,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var swGuard: MaterialSwitch
     private lateinit var swLl: MaterialSwitch
     private lateinit var swDyn: MaterialSwitch
-    private lateinit var infoHeader: View
-    private lateinit var infoBody: View
-    private lateinit var infoText: TextView
 
     private val ui = Handler(Looper.getMainLooper())
     private val tick = object : Runnable { override fun run() { refreshStatus(); ui.postDelayed(this, 1000) } }
@@ -110,7 +107,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(b)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(R.layout.activity_main)
-        if (b != null) { dirty = b.getBoolean("dirty"); advOpen = b.getBoolean("adv"); infoOpen = b.getBoolean("info") }
+        if (b != null) { dirty = b.getBoolean("dirty"); advOpen = b.getBoolean("adv"); picOpen = b.getBoolean("pic") }
 
         capsJson = capsCache ?: (try { Caps.build(this) } catch (_: Exception) { null }).also { capsCache = it }
         buildCams()
@@ -130,7 +127,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onSaveInstanceState(o: Bundle) {
         super.onSaveInstanceState(o)
-        o.putBoolean("dirty", dirty); o.putBoolean("adv", advOpen); o.putBoolean("info", infoOpen)
+        o.putBoolean("dirty", dirty); o.putBoolean("adv", advOpen); o.putBoolean("pic", picOpen)
     }
 
     override fun onNewIntent(i: Intent) {
@@ -231,7 +228,6 @@ class MainActivity : AppCompatActivity() {
         ddCam = findViewById(R.id.dd_cam); ddRes = findViewById(R.id.dd_res); ddFps = findViewById(R.id.dd_fps); ddBr = findViewById(R.id.dd_br)
         chipZoomed = findViewById(R.id.chip_zoomed); chipUntested = findViewById(R.id.chip_untested)
         swGuard = findViewById(R.id.sw_guard); swLl = findViewById(R.id.sw_ll); swDyn = findViewById(R.id.sw_dyn)
-        infoHeader = findViewById(R.id.info_header); infoBody = findViewById(R.id.info_body); infoText = findViewById(R.id.info_text)
     }
 
     private fun expander(header: View, body: View, arrow: ImageView, open: Boolean, onChange: (Boolean) -> Unit) {
@@ -250,8 +246,7 @@ class MainActivity : AppCompatActivity() {
         toolbar.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 R.id.menu_device_info -> {
-                    if (infoBody.visibility != View.VISIBLE) infoHeader.performClick()
-                    infoHeader.post { infoHeader.requestRectangleOnScreen(Rect(0, 0, infoHeader.width, infoHeader.height + infoBody.height), false) }
+                    startActivity(Intent(this, DeviceInfoActivity::class.java))
                     true
                 }
                 R.id.menu_about -> {
@@ -333,8 +328,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         expander(findViewById(R.id.adv_header), findViewById(R.id.adv_body), findViewById(R.id.adv_arrow), advOpen) { advOpen = it }
-        expander(infoHeader, infoBody, findViewById(R.id.info_arrow), infoOpen) { infoOpen = it }
-        infoText.text = capsJson?.let { Caps.text(it) } ?: getString(R.string.info_unavailable)
+        expander(findViewById(R.id.pic_header), findViewById(R.id.pic_body), findViewById(R.id.pic_arrow), picOpen) { picOpen = it }
 
         // quit with confirmation
         findViewById<View>(R.id.btn_quit).setOnClickListener {
@@ -474,9 +468,5 @@ class MainActivity : AppCompatActivity() {
 
         if (swCam.isChecked != s.camEnabled) { syncing = true; swCam.isChecked = s.camEnabled; syncing = false }
         camSupport.setText(if (s.camEnabled) R.string.camera_on_support else R.string.camera_off_support)
-        if (infoBody.visibility == View.VISIBLE) {
-            infoText.text = (capsJson?.let { Caps.text(it) } ?: getString(R.string.info_unavailable)) + "\n\n" + getString(R.string.info_status) + ": " + s.status +
-                (if (s.guardMsg.isNotEmpty()) "\n" + s.guardMsg else "")
-        }
     }
 }
