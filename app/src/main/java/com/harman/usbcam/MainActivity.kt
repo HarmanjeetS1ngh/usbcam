@@ -15,6 +15,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.ArrayAdapter
@@ -135,6 +136,33 @@ class MainActivity : AppCompatActivity() {
     override fun onSaveInstanceState(o: Bundle) {
         super.onSaveInstanceState(o)
         o.putBoolean("dirty", dirty); o.putBoolean("adv", advOpen); o.putBoolean("pic", picOpen)
+    }
+
+    /** After a theme change the screen is rebuilt and Android gives the old focus back to a drop-down, which then opens. Drop that focus. */
+    override fun onRestoreInstanceState(s: Bundle) {
+        super.onRestoreInstanceState(s)
+        releaseDropdownFocus()
+    }
+
+    /** A tap anywhere outside the focused drop-down un-selects it. */
+    override fun dispatchTouchEvent(e: MotionEvent): Boolean {
+        if (e.actionMasked == MotionEvent.ACTION_DOWN) {
+            val f = currentFocus
+            if (f is MaterialAutoCompleteTextView) {
+                val r = Rect()
+                f.getGlobalVisibleRect(r)
+                if (!r.contains(e.rawX.toInt(), e.rawY.toInt())) releaseDropdownFocus()
+            }
+        }
+        return super.dispatchTouchEvent(e)
+    }
+
+    private fun releaseDropdownFocus() {
+        if (!::ddCam.isInitialized) return
+        for (d in arrayOf(ddCam, ddRes, ddFps, ddBr)) {
+            if (d.isPopupShowing) d.dismissDropDown()
+            if (d.hasFocus()) d.clearFocus()
+        }
     }
 
     override fun onNewIntent(i: Intent) {
@@ -314,6 +342,8 @@ class MainActivity : AppCompatActivity() {
         }
         ddFps.setOnItemClickListener { _, _, pos, _ -> if (pos != fpsIdx) { fpsIdx = pos; changed() } }
         ddBr.setOnItemClickListener { _, _, pos, _ -> if (pos != brIdx) { brIdx = pos; changed() } }
+        // after a pick, or when the list is closed without a pick, the field loses its selected state
+        for (d in arrayOf(ddCam, ddRes, ddFps, ddBr)) d.setOnDismissListener { ui.post { releaseDropdownFocus() } }
         chipZoomed.setOnClickListener { explain(R.string.chip_zoomed, R.string.chip_zoomed_why) }
         chipUntested.setOnClickListener { explain(R.string.chip_untested, R.string.chip_untested_why) }
 

@@ -144,3 +144,10 @@ The user prefers direct, honest feedback, and narrow answers over long lists. Te
 - Sharp preset = the largest picture (w*h) the selected camera offers (S22 main lens: 4K, labelled "zoomed in"); Fast = nearest 720p, Balanced = nearest 1080p. Preset match uses the same function.
 - Theme-change bug: after recreate the first focusable view (camera dropdown) took focus, scrolled into view and opened. The scroll content container is now focusable-in-touch-mode so it takes the initial focus instead.
 - Appearance moved to the top of Advanced.
+
+## M6k fixes (UI only, NOT COMPILED)
+- Theme change / recreate: the three NestedScrollViews now have ids (scroll_main, scroll_left, scroll_right) so Android restores the scroll position instead of jumping to the top. After restore, MainActivity.onRestoreInstanceState drops focus from any drop-down (releaseDropdownFocus), so the camera drop-down no longer opens by itself.
+- Drop-downs lose their selected state after a pick or when the list is closed (setOnDismissListener), and a tap outside the focused drop-down clears it (dispatchTouchEvent).
+- Spacing: extra bottom padding under Picture settings (gap before the divider) and inside Advanced; gap under the Appearance buttons. Appearance is first in Advanced.
+- Copy: Picture size -> Resolution, Smoothness -> FPS, Picture data rate -> Bitrate, "frames per second" -> "fps" everywhere (summary, drop-down items, Device info), new Protect the phone text.
+- Untested: all of the above on device; focus behaviour of the exposed drop-downs on Android versions other than the S22's.

@@ -44,15 +44,15 @@
     <string name="preset_balanced">Balanced</string>
     <string name="preset_sharp">Sharp</string>
     <string name="preset_custom">Custom</string>
-    <string name="summary_fmt">%1$s: %2$d×%3$d, %4$d frames per second, about %5$d Mbit/s</string>
+    <string name="summary_fmt">%1$s: %2$d×%3$d, %4$d fps, about %5$d Mbit/s</string>
     <string name="section_picture">Camera and picture</string>
     <string name="hint_camera">Camera</string>
     <string name="helper_camera">The back camera usually gives the best picture.</string>
-    <string name="hint_resolution">Picture size</string>
+    <string name="hint_resolution">Resolution</string>
     <string name="helper_resolution">Bigger is sharper but uses more power and data.</string>
-    <string name="hint_fps">Smoothness</string>
-    <string name="helper_fps">More frames per second looks smoother.</string>
-    <string name="fps_item">%1$d frames per second</string>
+    <string name="hint_fps">FPS</string>
+    <string name="helper_fps">More fps looks smoother.</string>
+    <string name="fps_item">%1$d fps</string>
     <string name="facing_back">Back</string>
     <string name="facing_front">Front</string>
     <string name="cam_label">%1$s camera · #%2$s</string>
@@ -72,12 +72,12 @@
 
     <!-- protection / advanced / info -->
     <string name="protect_title">Protect the phone</string>
-    <string name="protect_support">Lowers quality when warm. Stops when hot or the battery is low.</string>
+    <string name="protect_support">Keeps your phone safe. If it gets warm, the picture quality is lowered a little to cool it down. If it gets too hot or the battery is very low, streaming stops.</string>
     <string name="advanced">Advanced</string>
     <string name="device_info">Device info</string>
     <string name="state_expanded">Expanded</string>
     <string name="state_collapsed">Collapsed</string>
-    <string name="hint_bitrate">Picture data rate</string>
+    <string name="hint_bitrate">Bitrate</string>
     <string name="helper_bitrate">Higher is sharper but uses more of the USB link.</string>
     <string name="bitrate_auto">Automatic (recommended)</string>
     <string name="bitrate_item">%1$d Mbit/s</string>
@@ -174,8 +174,8 @@
     <string name="heat_hot">Too hot</string>
     <string name="di_batt_value">%1$d%%</string>
     <string name="di_temp_value">%1$.1f °C</string>
-    <string name="di_sending_value">%1$d×%2$d, %3$d frames per second</string>
+    <string name="di_sending_value">%1$d×%2$d, %3$d fps</string>
     <string name="di_cam_name">%1$s camera</string>
     <string name="di_lens_name">%1$s lens %2$s mm</string>
-    <string name="di_cam_value">%1$s · up to %2$d frames per second</string>
+    <string name="di_cam_value">%1$s · up to %2$d fps</string>
 </resources>
