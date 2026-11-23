@@ -271,19 +271,37 @@ static void FocusRing(ImDrawList* dl, ImVec2 a, ImVec2 b, float r) {
     if (ImGui::IsItemFocused() && ImGui::GetIO().NavVisible) dl->AddRect(ImVec2(a.x - S(2), a.y - S(2)), ImVec2(b.x + S(2), b.y + S(2)), Cu(g_pal.pri), r + S(2), 0, S(2));
 }
 
-// ---------- M3 widgets (compact) ----------
-// filled card: 12dp radius, 12dp padding, 1dp outline, grows with its content
+static void Ico(ImDrawList* dl, int i, ImVec2 c, bool big, ImU32 col);   // defined below with the icon textures
+
+// ---------- layout system (dp) ----------
+// 12 = gutter between regions and between cards, 16 = card padding, 12 = header -> controls and row -> row,
+// 2 = title -> subtitle, 4 = field label -> field. All vertical gaps are explicit (item spacing is 0 inside cards).
+#define GUT 12.0f
+#define CPAD 16.0f
+static void Gap(float dp) { ImGui::Dummy(ImVec2(0, S(dp))); }
+
+// card: 16dp radius, 16dp padding, 1dp outline, grows with its content
 static void CardBegin(const char* id) {
-    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, S(12));
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(S(12), S(10)));
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, S(16));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(S(CPAD), S(CPAD)));
     ImGui::BeginChild(id, ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding,
                       ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     ImGui::PopStyleVar(2);
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(S(8), 0));
 }
 static void CardEnd() {
+    ImGui::PopStyleVar();
     ImVec2 p = ImGui::GetWindowPos(), s = ImGui::GetWindowSize();
-    ImGui::GetWindowDrawList()->AddRect(ImVec2(p.x + 0.5f, p.y + 0.5f), ImVec2(p.x + s.x - 0.5f, p.y + s.y - 0.5f), Cu(g_pal.outV), S(12), 0, 1.0f);
+    ImGui::GetWindowDrawList()->AddRect(ImVec2(p.x + 0.5f, p.y + 0.5f), ImVec2(p.x + s.x - 0.5f, p.y + s.y - 0.5f), Cu(g_pal.outV), S(16), 0, 1.0f);
     ImGui::EndChild();
+}
+static void Divider() {
+    Gap(GUT);
+    ImVec2 p = ImGui::GetCursorScreenPos(); float w = ImGui::GetContentRegionAvail().x;
+    float y = floorf(p.y), t = std::max(1.0f, floorf(g_sc + 0.5f));   // whole pixels: no blurred hairline
+    ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(floorf(p.x), y), ImVec2(floorf(p.x + w), y + t), Cu(g_pal.outV));
+    ImGui::Dummy(ImVec2(w, t));
+    Gap(GUT);
 }
 
 // M3 switch, compact: 44x24dp track; the thumb grows and shows a check when on
@@ -315,20 +333,46 @@ static bool Switch(const char* id, bool* v) {
     FocusRing(dl, p, ImVec2(p.x + w, p.y + h), h * 0.5f);
     return ch;
 }
-// list row: label on the left, switch on the right
-static bool SwitchRow(const char* id, const char* label, bool* v, bool title) {
-    const float h = 28.0f * g_sc;
-    float avail = ImGui::GetContentRegionAvail().x;
+// One 28dp line: neutral Lucide icon, label, optional switch on the right; optional supporting text 2dp below, aligned with the label.
+static bool Row(int icon, const char* label, ImFont* f, const char* id, bool* sw, const char* desc = nullptr, const ImVec4* dc = nullptr, bool en = true) {
+    const float rh = S(28), ind = icon >= 0 ? S(30) : 0.0f;
     ImVec2 p = ImGui::GetCursorScreenPos();
-    ImFont* f = title ? f_title : f_body;
-    ImGui::PushFont(f);
-    float th = ImGui::GetTextLineHeight();
-    ImGui::SetCursorScreenPos(ImVec2(p.x, p.y + (h - th) * 0.5f));
-    ImGui::TextUnformatted(label);
-    ImGui::PopFont();
-    ImGui::SetCursorScreenPos(ImVec2(p.x + avail - 48.0f * g_sc, p.y));
-    return Switch(id, v);
+    float avail = ImGui::GetContentRegionAvail().x;
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    if (icon >= 0) Ico(dl, icon, ImVec2(p.x + S(10), p.y + rh * 0.5f), false, Cu(g_pal.onVar));
+    ImVec2 ts = TSize(f, label);
+    DText(dl, f, ImVec2(p.x + ind, p.y + (rh - ts.y) * 0.5f), Cu(g_pal.onSurf), label);
+    bool ch = false;
+    if (sw) {
+        ImGui::SetCursorScreenPos(ImVec2(p.x + avail - S(48), p.y));
+        ImGui::BeginDisabled(!en);
+        ch = Switch(id, sw);
+        ImGui::EndDisabled();
+    }
+    ImGui::SetCursorScreenPos(p);
+    ImGui::Dummy(ImVec2(avail, rh));
+    if (desc && *desc) {
+        Gap(2);
+        if (ind > 0) ImGui::Indent(ind);
+        TextC(f_small, dc ? *dc : g_pal.onVar, desc, true);
+        if (ind > 0) ImGui::Unindent(ind);
+    }
+    return ch;
 }
+// read-only line: icon, label on the left, value on the right
+static void InfoRow(int icon, const char* label, const char* value) {
+    const float rh = S(28);
+    ImVec2 p = ImGui::GetCursorScreenPos();
+    float avail = ImGui::GetContentRegionAvail().x;
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    Ico(dl, icon, ImVec2(p.x + S(10), p.y + rh * 0.5f), false, Cu(g_pal.onVar));
+    ImVec2 ls = TSize(f_body, label), vs = TSize(f_body, value);
+    DText(dl, f_body, ImVec2(p.x + S(30), p.y + (rh - ls.y) * 0.5f), Cu(g_pal.onVar), label);
+    DText(dl, f_body, ImVec2(p.x + avail - vs.x, p.y + (rh - vs.y) * 0.5f), Cu(g_pal.onSurf), value);
+    ImGui::Dummy(ImVec2(avail, rh));
+}
+// small label above a field
+static void FieldLabel(const char* t) { TextC(f_label, g_pal.onVar, t); Gap(4); }
 // M3 segmented button (32dp); returns the (possibly new) selected index
 static int Segmented(const char* id, const char* const* lab, int n, int sel) {
     const float sc = g_sc, h = 36.0f * sc;
@@ -379,13 +423,16 @@ static void ChipAt(ImDrawList* dl, float xr, float cy, const char* t, const ImVe
     DText(dl, f_label, ImVec2(x + px + r * 2.0f + 8.0f * sc, y + (h - ts.y) * 0.5f), Cu(fg), t);
 }
 static float ChipWidth(const char* t) { return 42.0f * g_sc + TSize(f_label, t).x; }
-// label on the left, value on the right
-static void KV(const char* k, const char* v) {
-    ImVec2 vs = TSize(f_body, v);
-    TextC(f_body, g_pal.onVar, k);
-    ImGui::SameLine();
-    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - vs.x);
-    TextC(f_body, g_pal.onSurf, v);
+// word-wrapped text, every line centred on cx; returns the height used (dl == nullptr: measure only)
+static float CenterWrap(ImDrawList* dl, ImFont* f, float cx, float y, ImU32 col, const std::string& t, float maxw) {
+    std::vector<std::string> lines; std::string cur, word;
+    auto flush = [&]() { if (!word.empty()) { std::string trial = cur.empty() ? word : cur + " " + word;
+        if (!cur.empty() && TSize(f, trial.c_str()).x > maxw) { lines.push_back(cur); cur = word; } else cur = trial; word.clear(); } };
+    for (char ch : t) { if (ch == ' ') flush(); else word += ch; }
+    flush(); if (!cur.empty()) lines.push_back(cur);
+    float lh = TSize(f, "Ag").y, yy = y;
+    for (auto& ln : lines) { if (dl) DText(dl, f, ImVec2(cx - TSize(f, ln.c_str()).x * 0.5f, yy), col, ln.c_str()); yy += lh; }
+    return yy - y;
 }
 // rounds the corners of a rectangle that was drawn with square corners: a thick stroke in the background colour just outside it
 static void RoundOut(ImDrawList* dl, ImVec2 a, ImVec2 b, float r, float t, ImU32 col) {
@@ -398,11 +445,43 @@ static void Overlay(ImDrawList* dl, ImVec2 pos, const char* t) {
     dl->AddRectFilled(pos, ImVec2(pos.x + ts.x + px * 2.0f, pos.y + h), IM_COL32(0, 0, 0, 185), h * 0.5f);
     DText(dl, f_small, ImVec2(pos.x + px, pos.y + 5.0f * g_sc), IM_COL32(255, 255, 255, 255), t);
 }
-// Lucide icon, tinted: centre c, size sz
-static SDL_Texture* g_ic[IC_N];
-static void Ico(ImDrawList* dl, int i, ImVec2 c, float sz, ImU32 col) {
-    if (i < 0 || i >= IC_N || !g_ic[i]) return;
-    dl->AddImage((ImTextureID)g_ic[i], ImVec2(c.x - sz * 0.5f, c.y - sz * 0.5f), ImVec2(c.x + sz * 0.5f, c.y + sz * 0.5f), ImVec2(0, 0), ImVec2(1, 1), col);
+// Lucide icons: the 96px masks are area-averaged to the exact pixel size of each use (20dp and 56dp, times the UI scale),
+// so strokes stay crisp at every DPI / text size. The colour is applied when drawing.
+static SDL_Texture* g_ic[2][IC_N];   // [0] = 20dp, [1] = 56dp
+static int g_icpx[2];
+static void icons_build(SDL_Renderer* ren, float sc) {
+    const float dp[2] = { 20.0f, 56.0f };
+    static unsigned char px[IC_SZ * IC_SZ * 4];
+    for (int v = 0; v < 2; v++) {
+        int n = (int)(dp[v] * sc + 0.5f); if (n < 8) n = 8;
+        g_icpx[v] = n;
+        int tn = n < IC_SZ ? n : IC_SZ;   // larger than the mask: keep the mask size and let the GPU scale it up
+        for (int i = 0; i < IC_N; i++) {
+            if (g_ic[v][i]) { SDL_DestroyTexture(g_ic[v][i]); g_ic[v][i] = nullptr; }
+            for (int y = 0; y < tn; y++) for (int x = 0; x < tn; x++) {
+                float x0 = (float)x * IC_SZ / tn, x1 = (float)(x + 1) * IC_SZ / tn, y0 = (float)y * IC_SZ / tn, y1 = (float)(y + 1) * IC_SZ / tn;
+                float acc = 0, ws = 0;
+                for (int sy = (int)y0; sy < IC_SZ && (float)sy < y1; sy++) {
+                    float wy = std::min((float)(sy + 1), y1) - std::max((float)sy, y0);
+                    for (int sx = (int)x0; sx < IC_SZ && (float)sx < x1; sx++) {
+                        float wx = std::min((float)(sx + 1), x1) - std::max((float)sx, x0);
+                        acc += (float)g_ic_a[i][sy * IC_SZ + sx] * wx * wy; ws += wx * wy;
+                    }
+                }
+                unsigned char* q = px + ((size_t)y * tn + x) * 4;
+                q[0] = q[1] = q[2] = 255; q[3] = (unsigned char)(ws > 0 ? acc / ws + 0.5f : 0);
+            }
+            g_ic[v][i] = SDL_CreateTexture(ren, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, tn, tn);
+            if (g_ic[v][i]) { SDL_UpdateTexture(g_ic[v][i], nullptr, px, tn * 4); SDL_SetTextureBlendMode(g_ic[v][i], SDL_BLENDMODE_BLEND); }
+        }
+    }
+}
+// draws icon i centred on c, big = the 56dp variant, pixel-aligned
+static void Ico(ImDrawList* dl, int i, ImVec2 c, bool big, ImU32 col) {
+    SDL_Texture* t = (i >= 0 && i < IC_N) ? g_ic[big ? 1 : 0][i] : nullptr;
+    if (!t) return;
+    float n = (float)g_icpx[big ? 1 : 0], x = floorf(c.x - n * 0.5f + 0.5f), y = floorf(c.y - n * 0.5f + 0.5f);
+    dl->AddImage((ImTextureID)t, ImVec2(x, y), ImVec2(x + n, y + n), ImVec2(0, 0), ImVec2(1, 1), col);
 }
 
 template <class F> static auto imrender(F f, ImDrawData* d, SDL_Renderer* r, int) -> decltype(f(d, r), void()) { f(d, r); }
@@ -471,12 +550,6 @@ static void gui_loop() {
     SDL_Renderer* ren = win ? SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC) : nullptr;
     if (win && !ren) ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_SOFTWARE);
     if (!win || !ren) { ulog("[error] window failed: %s", SDL_GetError()); return; }
-    for (int i = 0; i < IC_N; i++) {   // Lucide icons as white textures; the colour is applied when drawing
-        static unsigned char px[IC_SZ * IC_SZ * 4];
-        for (int k = 0; k < IC_SZ * IC_SZ; k++) { px[k * 4] = px[k * 4 + 1] = px[k * 4 + 2] = 255; px[k * 4 + 3] = g_ic_a[i][k]; }
-        g_ic[i] = SDL_CreateTexture(ren, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, IC_SZ, IC_SZ);
-        if (g_ic[i]) { SDL_UpdateTexture(g_ic[i], nullptr, px, IC_SZ * 4); SDL_SetTextureBlendMode(g_ic[i], SDL_BLENDMODE_BLEND); }
-    }
     auto set_min = [&](float s2) {   // minimum window size, never larger than the screen
         SDL_Rect db; int mw = (int)(860 * s2), mh = (int)(540 * s2);
         if (SDL_GetDisplayBounds(0, &db) == 0) { mw = std::min(mw, db.w); mh = std::min(mh, db.h); }
@@ -497,6 +570,7 @@ static void gui_loop() {
     g_pal = gs.s.light ? pal_light() : pal_dark();
     build_ui(sc);
     apply_theme(g_pal);
+    icons_build(ren, sc);
     ImGui_ImplSDL2_InitForSDLRenderer(win, ren);
     ImGui_ImplSDLRenderer2_Init(ren);
     g_mirror = gs.s.mirror ? 1 : 0;
@@ -545,11 +619,11 @@ static void gui_loop() {
             }
         }
 
-        // layout: 52dp app bar, preview stage on the left, 340dp control panel on the right, 28dp status bar, 12dp margins
+        // layout: 56dp app bar, preview stage on the left, 380dp control panel on the right, 36dp status bar, 12dp gutters
         int ww = 0, wh = 0;
         SDL_GetRendererOutputSize(ren, &ww, &wh);
         float panelW = 380 * sc; if (panelW > ww * 0.5f) panelW = ww * 0.5f;
-        const float mg = 12 * sc, pad = 8 * sc, barH = 52 * sc, statH = 32 * sc;
+        const float mg = S(GUT), pad = 8 * sc, barH = 56 * sc, statH = 36 * sc;
         const float sx0 = mg, sy0 = barH, sx1 = (float)ww - panelW, sy1 = (float)wh - statH;
         bool live = have_frame && (now_us() - g_prev_us.load()) < 1500000;
 
@@ -579,7 +653,7 @@ static void gui_loop() {
 
         if (gs.s.tsz != cur_tsz) {   // text size changed: rebuild fonts and sizes before the frame starts
             cur_tsz = gs.s.tsz; sc = dsc * tmul[cur_tsz];
-            build_ui(sc); apply_theme(g_pal);
+            build_ui(sc); apply_theme(g_pal); icons_build(ren, sc);
             ImGui_ImplSDLRenderer2_DestroyDeviceObjects();
             set_min(sc);
             settings_save(gs.s);
@@ -604,20 +678,17 @@ static void gui_loop() {
             std::string sub = get_sub();
             std::string ttl = title;
             if (live) { ttl = "Preview is off"; sub = "The phone is connected and streaming, and the virtual camera still works. Turn on Live preview to see the picture here."; }
-            float bw = std::min(sx1 - sx0 - 48 * sc, 440 * sc);
-            ImVec2 t1 = TSize(f_head, ttl.c_str(), bw), t2 = TSize(f_body, sub.c_str(), bw);
-            float isz = 72 * sc, gap = 14 * sc;
-            float total = isz + gap + t1.y + 6 * sc + t2.y;
+            float bw = std::min(sx1 - sx0 - 48 * sc, 400 * sc);
+            ImVec2 t1 = TSize(f_head, ttl.c_str(), bw);
+            float t2h = CenterWrap(nullptr, f_body, 0, 0, 0, sub, bw);
+            float isz = (float)g_icpx[1], gap = 20 * sc;
+            float total = isz + gap + t1.y + 8 * sc + t2h;
             float cx = (sx0 + sx1) * 0.5f, y = (sy0 + sy1) * 0.5f - total * 0.5f;
-            {
-                ImVec4 gc = g_pal.onVar;
-                if (!live && kind == 3) gc = g_pal.err; else if (!live && kind == 2) gc = g_pal.warn; else if (live) gc = g_pal.ok;
-                Ico(bg, live ? IC_VIDOFF : (kind == 3 ? IC_ALERT : IC_PHONE), ImVec2(cx, y + isz * 0.5f), isz, Cu(gc));
-            }
+            Ico(bg, live ? IC_VIDOFF : (kind == 3 ? IC_ALERT : IC_PHONE), ImVec2(cx, y + isz * 0.5f), true, Cu(g_pal.outl));   // neutral: the chip carries the status colour
             y += isz + gap;
             DText(bg, f_head, ImVec2(cx - t1.x * 0.5f, y), Cu(g_pal.onSurf), ttl.c_str(), bw);
-            y += t1.y + 6 * sc;
-            DText(bg, f_body, ImVec2(cx - t2.x * 0.5f, y), Cu(g_pal.onVar), sub.c_str(), bw);
+            y += t1.y + 8 * sc;
+            CenterWrap(bg, f_body, cx, y, Cu(g_pal.onVar), sub, bw);
         } else if (vid) {
             char ov[96];
             snprintf(ov, sizeof ov, "%d" MUL "%d" SEP "%.0f fps" SEP "%.0f ms", tw, th, fps, lat);
@@ -634,7 +705,7 @@ static void gui_loop() {
                                            ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
             ImGui::PopStyleVar();
             ImDrawList* dl = ImGui::GetWindowDrawList();
-            float cy = barH * 0.5f, lx = 16 * sc;
+            float cy = barH * 0.5f, lx = mg;
 
             // round tonal buttons on the right: text smaller, text larger, theme
             const float bs = 40 * sc;
@@ -646,12 +717,12 @@ static void gui_loop() {
                 ImVec4 fill = (hv && en) ? Mix(g_pal.secC, g_pal.onSecC, 0.10f) : g_pal.secC;
                 ImVec2 ctr(pp.x + bs * 0.5f, pp.y + bs * 0.5f);
                 dl->AddCircleFilled(ctr, bs * 0.5f, Cu(fill), 32);
-                if (glyph) Ico(dl, gs.s.light ? IC_MOON : IC_SUN, ctr, 22 * sc, Cu(g_pal.onSecC));
+                if (glyph) Ico(dl, gs.s.light ? IC_MOON : IC_SUN, ctr, false, Cu(g_pal.onSecC));
                 else { ImVec2 ts = TSize(f_label, txt); DText(dl, f_label, ImVec2(ctr.x - ts.x * 0.5f, ctr.y - ts.y * 0.5f), Cu(en ? g_pal.onSecC : g_pal.outl), txt); }
                 FocusRing(dl, pp, ImVec2(pp.x + bs, pp.y + bs), bs * 0.5f);
                 return pr && en;
             };
-            ImVec2 bp((float)ww - 16 * sc - bs, cy - bs * 0.5f);
+            ImVec2 bp((float)ww - mg - bs, cy - bs * 0.5f);
             if (tbtn("##theme", bp, true, gs.s.light ? "Switch to dark theme" : "Switch to light theme", "", true)) {
                 gs.s.light = !gs.s.light;
                 g_pal = gs.s.light ? pal_light() : pal_dark();
@@ -683,61 +754,69 @@ static void gui_loop() {
                                          ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBackground);
         ImGui::PopStyleVar();
 
-        // virtual camera
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));   // vertical gaps between cards are explicit (Gap)
+
+        // virtual camera: master switch, state line, then the two output options
         CardBegin("##vcam");
         {
             bool v = g_vcam_on.load();
-            ImGui::BeginDisabled(!g_vcam_supported);
-            if (SwitchRow("##vc", "Virtual camera", &v, true)) {
+            std::string vsub; const ImVec4* vcol = &g_pal.onVar;
+            if (!g_vcam_supported) { vsub = g_vcam_why; vcol = &g_pal.err; }
+            else if (!vcam_msg.empty()) { vsub = vcam_msg; vcol = &g_pal.err; }
+            else if (g_vcam_on.load()) {
+                if (consumer_recent(2000)) { vsub = "An app is using \"UsbCam Camera\"."; vcol = &g_pal.ok; }
+                else vsub = "On" SEP "pick \"UsbCam Camera\" in Zoom, Meet, Teams or Discord.";
+            } else vsub = "Off";
+            if (Row(IC_VIDEO, "Virtual camera", f_title, "##vc", &v, vsub.c_str(), vcol, g_vcam_supported)) {
                 std::string err; bool ok = vcam_enable(v, err);
                 vcam_msg = ok ? std::string() : err;
                 gs.s.vcam = ok ? v : false;
                 settings_save(gs.s);
             }
-            ImGui::EndDisabled();
-            if (!g_vcam_supported) TextC(f_small, g_pal.err, g_vcam_why.c_str(), true);
-            else if (!vcam_msg.empty()) TextC(f_small, g_pal.err, vcam_msg.c_str(), true);
-            else if (g_vcam_on.load()) {
-                if (consumer_recent(2000)) TextC(f_small, g_pal.ok, "An app is using \"UsbCam Camera\".", true);
-                else TextC(f_small, g_pal.onVar, "On" SEP "pick \"UsbCam Camera\" in Zoom, Meet, Teams or Discord.", true);
-            } else TextC(f_small, g_pal.onVar, "Off", true);
-            ImGui::Separator();
+            Divider();
             bool mir = g_mirror.load() != 0;
-            if (SwitchRow("##mir", "Mirror picture", &mir, false)) {
+            if (Row(IC_FLIP, "Mirror picture", f_body, "##mir", &mir, "Flips the picture left to right.")) {
                 g_mirror = mir ? 1 : 0;
                 if (g_sh.hdr) g_sh.hdr->mirror = g_mirror.load();
                 gs.s.mirror = mir; settings_save(gs.s);
             }
-            ImGui::Separator();
+            Gap(GUT);
             bool pvv = gs.s.preview;
-            if (SwitchRow("##pv", "Live preview", &pvv, false)) { gs.s.preview = pvv; settings_save(gs.s); }
-            TextC(f_small, g_pal.onVar, pvv ? "Shows the phone picture here. Turn off to save PC resources." : "Off. The phone and the virtual camera keep working.", true);
+            if (Row(pvv ? IC_EYE : IC_EYEOFF, "Live preview", f_body, "##pv", &pvv, pvv ? "Shows the phone picture here. Turn off to save PC resources." : "Off. The phone and the virtual camera keep working.")) { gs.s.preview = pvv; settings_save(gs.s); }
         }
         CardEnd();
+        Gap(GUT);
 
-        // phone (battery) - above the tall picture card so it never scrolls out of view
+        // phone (battery, temperature) - above the tall picture card so it never scrolls out of view
         CardBegin("##phone");
         {
-            TextC(f_title, g_pal.onSurf, "Phone");
             JV pv;
-            if (!pst.empty() && jparse_all(pst, pv) && pv.t == 'o' && pv.get("batt")) {
+            bool conn = !pst.empty() && jparse_all(pst, pv) && pv.t == 'o' && pv.get("batt");
+            Row(IC_PHONE, "Phone", f_title, nullptr, nullptr, conn ? (live ? "Connected" : "Last known status") : "Not connected");
+            if (conn) {
+                Divider();
                 char b1[48], b2[48];
-                snprintf(b1, sizeof b1, "%d%%%s", (int)pv.num("batt"), pv.num("plugged") > 0 ? SEP "charging" : "");
+                bool chg = pv.num("plugged") > 0;
+                snprintf(b1, sizeof b1, "%d%%%s", (int)pv.num("batt"), chg ? SEP "charging" : "");
                 snprintf(b2, sizeof b2, "%.1f " DEG "C", pv.num("tempC"));
-                KV("Battery", b1);
-                KV("Temperature", b2);
+                InfoRow(chg ? IC_CHARGE : IC_BATT, "Battery", b1);
+                Gap(4);
+                InfoRow(IC_THERM, "Temperature", b2);
                 if (pv.num("guardStage") > 0) {
                     std::string gm = pv.str("guard");
+                    Gap(8);
                     TextC(f_small, g_pal.warn, gm.empty() ? "The phone is protecting itself (heat or battery)." : gm.c_str(), true);
                 }
-            } else TextC(f_small, g_pal.onVar, "Not connected", true);
+            }
         }
         CardEnd();
+        Gap(GUT);
 
         // phone picture
         CardBegin("##pic");
         {
-            TextC(f_title, g_pal.onSurf, "Phone picture");
+            Row(IC_CAMERA, "Phone picture", f_title, nullptr, nullptr, gs.s.phone_default ? "Using the phone's own settings." : "Choose what the phone sends.");
+            Divider();
             static const char* const srcLab[2] = { "Phone default", "Custom" };
             int ssel = gs.s.phone_default ? 0 : 1;
             int sn = Segmented("##src", srcLab, 2, ssel);
@@ -747,11 +826,13 @@ static void gui_loop() {
                 gui_apply(gs.s, true);
             }
             if (!gs.s.phone_default) {
+                Gap(GUT);
                 if (gs.cams.empty()) {
                     TextC(f_small, g_pal.onVar, "The camera list appears once the phone is connected.", true);
+                    Gap(GUT);
                 } else {
                     bool changed = false;
-                    TextC(f_label, g_pal.onVar, "Camera");
+                    FieldLabel("Camera");
                     ImGui::SetNextItemWidth(-1);
                     if (ImGui::BeginCombo("##cam", gs.cams[gs.ci].name.c_str())) {
                         for (int i = 0; i < (int)gs.cams.size(); i++) {
@@ -759,8 +840,9 @@ static void gui_loop() {
                         }
                         ImGui::EndCombo();
                     }
+                    Gap(GUT);
                     GCam& c = gs.cams[gs.ci];
-                    TextC(f_label, g_pal.onVar, "Resolution");
+                    FieldLabel("Resolution");
                     ImGui::SetNextItemWidth(-1);
                     if (ImGui::BeginCombo("##res", c.modes[gs.mi].label.c_str())) {
                         for (int i = 0; i < (int)c.modes.size(); i++) {
@@ -768,9 +850,10 @@ static void gui_loop() {
                         }
                         ImGui::EndCombo();
                     }
+                    Gap(GUT);
                     GMode& m = c.modes[gs.mi];
                     char fb[32]; snprintf(fb, sizeof fb, "%d fps", m.fps[gs.fi]);
-                    TextC(f_label, g_pal.onVar, "Frame rate");
+                    FieldLabel("Frame rate");
                     ImGui::SetNextItemWidth(-1);
                     if (ImGui::BeginCombo("##fps", fb)) {
                         for (int i = 0; i < (int)m.fps.size(); i++) {
@@ -779,14 +862,16 @@ static void gui_loop() {
                         }
                         ImGui::EndCombo();
                     }
+                    Gap(GUT);
                     if (changed) { commit_selection(gs); gui_apply(gs.s, true); }
                 }
-                TextC(f_label, g_pal.onVar, "Quality");
+                FieldLabel("Quality");
                 static const char* const qLab[2] = { "Automatic", "Manual" };
                 int qsel = gs.s.br == 0 ? 0 : 1;
                 int qn = Segmented("##q", qLab, 2, qsel);
                 if (qn != qsel) { gs.s.br = qn == 0 ? 0 : 12000000; gui_apply(gs.s, true); }
                 if (gs.s.br != 0) {
+                    Gap(8);
                     int mb = gs.s.br / 1000000; if (mb < 2) mb = 2;
                     ImGui::SetNextItemWidth(-1);
                     if (ImGui::SliderInt("##br", &mb, 2, 60, "%d Mbit/s")) gs.s.br = mb * 1000000;
@@ -796,7 +881,8 @@ static void gui_loop() {
             }
         }
         CardEnd();
-        ImGui::Dummy(ImVec2(0, 4 * sc));
+        Gap(GUT);
+        ImGui::PopStyleVar();
         ImGui::End();
 
         // ----- status bar: hint on the left, what the phone is really sending on the right -----
@@ -828,7 +914,7 @@ static void gui_loop() {
     ImGui_ImplSDL2_Shutdown();
     ImGui::DestroyContext();
     if (tex) SDL_DestroyTexture(tex);
-    for (int i = 0; i < IC_N; i++) if (g_ic[i]) SDL_DestroyTexture(g_ic[i]);
+    for (int v = 0; v < 2; v++) for (int i = 0; i < IC_N; i++) if (g_ic[v][i]) SDL_DestroyTexture(g_ic[v][i]);
     av_frame_free(&show);
     SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); SDL_Quit();
 }
