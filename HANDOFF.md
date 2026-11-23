@@ -165,3 +165,8 @@ The user prefers direct, honest feedback, and narrow answers over long lists. Te
 - Only builds made by Actions after this change have run-number versionCodes; the installed 0.5 (versionCode 5) updates normally. Every push now creates a release.
 - Untested: everything on device (download redirect, installer hand-off, unknown-sources flow, rotation during download: download finishes and installer opens, progress dialog is lost).
 - M7b: Reset to recommended settings moved to the end of the Streaming group (layout only).
+
+## M7c (NOT COMPILED)
+- Version 0.7. RELEASE_NOTES.md rewritten: the app's "What's new" is the notes of the LATEST release = RELEASE_NOTES.md at the time of that build, so it must be edited before every push (it was stale because it still held the 0.6 text).
+- Update download dialog starts indeterminate ("Getting the update ready…", the GitHub redirect can take several seconds) and switches to the % bar when the first data arrives.
+- "Check for updates" button: LabelMedium text, smaller side padding, single line; version text BodyMedium, so the version no longer wraps.

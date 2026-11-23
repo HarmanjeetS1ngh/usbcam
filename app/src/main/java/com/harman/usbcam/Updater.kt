@@ -79,6 +79,7 @@ object Updater {
             val total = if (info.size > 0) info.size else conn.contentLengthLong
             var done = 0L
             var last = -1
+            if (total > 0) onProgress(0) // headers arrived: the real download starts now
             conn.inputStream.use { ins ->
                 out.outputStream().use { os ->
                     val buf = ByteArray(64 * 1024)

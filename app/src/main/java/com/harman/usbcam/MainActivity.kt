@@ -451,7 +451,8 @@ class MainActivity : AppCompatActivity() {
         val v = layoutInflater.inflate(R.layout.dialog_update_progress, null)
         val bar = v.findViewById<LinearProgressIndicator>(R.id.update_bar)
         val pct = v.findViewById<TextView>(R.id.update_pct)
-        pct.text = getString(R.string.update_pct, 0)
+        bar.isIndeterminate = true // "working" state until the first data arrives
+        pct.setText(R.string.update_preparing)
         val cancel = java.util.concurrent.atomic.AtomicBoolean(false)
         val dlg = MaterialAlertDialogBuilder(this).setTitle(R.string.update_downloading).setView(v).setCancelable(false)
             .setNegativeButton(R.string.update_cancel) { _, _ -> cancel.set(true) }.show()
@@ -460,7 +461,7 @@ class MainActivity : AppCompatActivity() {
             var file: java.io.File? = null
             try {
                 file = Updater.download(app, info, { p ->
-                    runOnUiThread { if (!isDestroyed) { bar.setProgressCompat(p, true); pct.text = getString(R.string.update_pct, p) } }
+                    runOnUiThread { if (!isDestroyed) { if (bar.isIndeterminate) bar.isIndeterminate = false; bar.setProgressCompat(p, true); pct.text = getString(R.string.update_pct, p) } }
                 }, { cancel.get() })
             } catch (_: Exception) { }
             val done = file
