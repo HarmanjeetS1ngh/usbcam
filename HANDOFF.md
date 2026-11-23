@@ -178,3 +178,6 @@ The user prefers direct, honest feedback, and narrow answers over long lists. Te
 - Protected files touched (strictly needed, preset must reach the camera request): CamControls.kt (awbMode, awbModes, load() reads CONTROL_AWB_AVAILABLE_MODES, reset()), Streamer.applyCtl (one line: CONTROL_AWB_MODE when a preset is chosen and supported). Nothing else in Streamer/GlBridge/Caps/Service changed.
 - UI: wb_box chip row in activity_camera.xml, 5 new icons ic_wb_*.xml, strings wb_*, CameraActivity (wbChips, wbName, sync). Version 0.9.
 - Untested: whether the S22 lists all presets / honours them per lens; panel height in landscape with the extra row.
+
+## M10 (NOT COMPILED)
+- Status-card battery/temperature pills are now inside a ChipGroup (wrap) with single-line, wrap_content-height TextViews: in landscape the narrow left pane squeezed the temperature pill into two clipped lines. Pill TextViews keep their ids; Kotlin unchanged. Version 0.10.
