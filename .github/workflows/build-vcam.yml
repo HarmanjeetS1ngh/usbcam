@@ -1,0 +1,32 @@
+name: build-vcam
+on: [push, workflow_dispatch]
+jobs:
+  vcam:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch FFmpeg 8.1 (LGPL shared)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Invoke-WebRequest "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-win64-lgpl-shared-8.1.zip" -OutFile ff.zip
+          Expand-Archive ff.zip -DestinationPath deps
+      - name: Build
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ff = ((Get-ChildItem deps -Directory -Filter 'ffmpeg-*').FullName) -replace '\\','/'
+          cmake -S pc-vcam -B build-vcam -A x64 "-DFFMPEG_DIR=$ff"
+          if ($LASTEXITCODE -ne 0) { throw 'cmake configure failed' }
+          cmake --build build-vcam --config Release
+          if ($LASTEXITCODE -ne 0) { throw 'cmake build failed' }
+          New-Item -ItemType Directory out | Out-Null
+          Copy-Item build-vcam/Release/usbcam_vcam.exe out/
+          Copy-Item build-vcam/Release/usbcam_vcam_src.dll out/
+          Copy-Item "$ff/bin/avcodec-*.dll","$ff/bin/avutil-*.dll","$ff/bin/swresample-*.dll" out/
+          Copy-Item pc/vcam-install.ps1, pc/vcam-uninstall.ps1 out/
+          Get-ChildItem out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: usbcam-vcam
+          path: out

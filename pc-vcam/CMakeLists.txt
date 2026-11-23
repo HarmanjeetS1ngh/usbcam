@@ -1,0 +1,20 @@
+cmake_minimum_required(VERSION 3.15)
+project(usbcam_vcam CXX)
+set(CMAKE_CXX_STANDARD 17)
+if(NOT WIN32)
+  message(FATAL_ERROR "usbcam_vcam is Windows only")
+endif()
+# FFMPEG_DIR = extracted FFmpeg shared build (include/ lib/ bin/)
+
+# 1) the camera component: runs inside Windows' Frame Server, so it uses the static C runtime and needs no extra DLLs
+add_library(usbcam_vcam_src SHARED usbcam_vcam_src.cpp usbcam_vcam_src.def)
+set_property(TARGET usbcam_vcam_src PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
+target_compile_definitions(usbcam_vcam_src PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
+target_link_libraries(usbcam_vcam_src PRIVATE mfplat mf mfuuid strmiids uuid ole32 advapi32 user32)
+
+# 2) the feeder program (phone -> decode -> shared memory, creates the virtual camera)
+add_executable(usbcam_vcam usbcam_vcam.cpp)
+target_compile_definitions(usbcam_vcam PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
+target_include_directories(usbcam_vcam PRIVATE ${FFMPEG_DIR}/include)
+target_link_directories(usbcam_vcam PRIVATE ${FFMPEG_DIR}/lib)
+target_link_libraries(usbcam_vcam PRIVATE avcodec avutil ws2_32 mfplat mf mfuuid mfsensorgroup strmiids uuid ole32 pdh gdi32 user32 advapi32)

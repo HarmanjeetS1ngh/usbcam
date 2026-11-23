@@ -10,6 +10,79 @@ $global:UcCaps = $null
 $global:UcStatus = $null
 $global:UcLastErr = ''
 
+# ---- virtual camera ("UsbCam Camera" for Meet / Zoom / Teams ...): the feeder program vcam\usbcam_vcam.exe, controlled on 127.0.0.1:5003 ----
+$global:UcVcExe = Join-Path (Split-Path -Parent $global:UcDir) 'vcam\usbcam_vcam.exe'
+$global:UcVcPort = 5003
+$global:UcCfgPath = Join-Path $env:APPDATA 'UsbCam\tray.json'
+$global:UcCfg = @{ vcam = $false; mirror = $false }
+$global:UcVc = $null
+try {
+    if (Test-Path $global:UcCfgPath) {
+        $j = Get-Content $global:UcCfgPath -Raw | ConvertFrom-Json
+        $global:UcCfg.vcam = [bool]$j.vcam; $global:UcCfg.mirror = [bool]$j.mirror
+    }
+} catch { }
+
+function global:UcCfgSave {
+    try {
+        New-Item -ItemType Directory -Force (Split-Path -Parent $global:UcCfgPath) | Out-Null
+        $global:UcCfg | ConvertTo-Json | Set-Content $global:UcCfgPath
+    } catch { }
+}
+
+function global:UcVcCtl([string]$json) {
+    try {
+        $c = New-Object Net.Sockets.TcpClient
+        $iar = $c.BeginConnect('127.0.0.1', $global:UcVcPort, $null, $null)
+        if (-not $iar.AsyncWaitHandle.WaitOne(800)) { $c.Close(); return $null }
+        $c.EndConnect($iar)
+        $c.ReceiveTimeout = 2000
+        $s = $c.GetStream()
+        $w = New-Object IO.StreamWriter($s); $r = New-Object IO.StreamReader($s)
+        $w.WriteLine($json); $w.Flush()
+        $line = $r.ReadLine()
+        $c.Close()
+        if ($line) { return ($line | ConvertFrom-Json) }
+    } catch { }
+    return $null
+}
+
+function global:UcVcRunning { return [bool](Get-Process usbcam_vcam -ErrorAction SilentlyContinue) }
+
+function global:UcVcStart([bool]$quiet) {
+    if (UcVcRunning) { return }
+    if (-not (Test-Path $global:UcVcExe)) {
+        if (-not $quiet) { [void][Windows.Forms.MessageBox]::Show("Virtual camera program not found:`n$($global:UcVcExe)`nRun pc\build-vcam.ps1 first.") }
+        return
+    }
+    if (-not (Test-Path 'HKLM:\SOFTWARE\Classes\CLSID\{6B1F5D3A-2C47-4E58-9A0B-3D7E41C8A5F2}\InprocServer32')) {
+        if (-not $quiet) { [void][Windows.Forms.MessageBox]::Show("The virtual camera is not installed yet.`nRun pc\vcam-install.ps1 once (one admin click).") }
+        return
+    }
+    $m = '0'; if ($global:UcCfg.mirror) { $m = '1' }
+    Start-Process -FilePath $global:UcVcExe -ArgumentList @('--mirror', $m) -WindowStyle Hidden -WorkingDirectory (Split-Path -Parent $global:UcVcExe)
+    Start-Sleep -Milliseconds 1500
+    if (-not (UcVcRunning) -and -not $quiet) {
+        $tail = ''
+        try { $tail = (Get-Content (Join-Path $env:TEMP 'usbcam-vcam.log') -Tail 3) -join "`n" } catch { }
+        [void][Windows.Forms.MessageBox]::Show("The virtual camera could not start.`n$tail`nLog: $env:TEMP\usbcam-vcam.log")
+    }
+}
+
+function global:UcVcStop {
+    $null = UcVcCtl '{"cmd":"quit"}'
+    for ($i = 0; $i -lt 15 -and (UcVcRunning); $i++) { Start-Sleep -Milliseconds 200 }
+    Get-Process usbcam_vcam -ErrorAction SilentlyContinue | Stop-Process -Force
+    $global:UcVc = $null
+}
+
+function global:UcVcLine {
+    if ($global:UcVc -eq $null) { return '' }
+    if ($global:UcVc.live) { return "Camera is live ($($global:UcVc.w)x$($global:UcVc.h))" }
+    if ($global:UcVc.apps) { return 'An app is using it - waiting for the phone' }
+    return "Ready - pick 'UsbCam Camera' in your app"
+}
+
 function global:UcCtl([string]$json) {
     # one short connection per command, so the viewer / OBS source can stay connected at the same time
     try {
@@ -141,6 +214,33 @@ function global:UcBuildMenu {
     })
     [void]$global:UcMenu.Items.Add($guard)
 
+    [void]$global:UcMenu.Items.Add((New-Object Windows.Forms.ToolStripSeparator))
+    $vcOn = (UcVcRunning)
+    $vc = New-Object Windows.Forms.ToolStripMenuItem ('Virtual camera: ' + $(if ($vcOn) { 'On' } else { 'Off' }))
+    $vc.Checked = $vcOn
+    $vc.add_Click({
+        if (UcVcRunning) { $global:UcCfg.vcam = $false; UcCfgSave; UcVcStop }
+        else { $global:UcCfg.vcam = $true; UcCfgSave; UcVcStart $false }
+        UcRefresh
+    })
+    [void]$global:UcMenu.Items.Add($vc)
+    if ($vcOn) {
+        $vl = New-Object Windows.Forms.ToolStripMenuItem (UcVcLine)
+        $vl.Enabled = $false
+        [void]$global:UcMenu.Items.Add($vl)
+    }
+    $mir = New-Object Windows.Forms.ToolStripMenuItem 'Mirror picture'
+    $mir.Checked = [bool]$global:UcCfg.mirror
+    $mir.add_Click({
+        $global:UcCfg.mirror = -not [bool]$global:UcCfg.mirror
+        UcCfgSave
+        $v = 'false'; if ($global:UcCfg.mirror) { $v = 'true' }
+        if (UcVcRunning) { $null = UcVcCtl ('{"cmd":"mirror","on":' + $v + '}') }
+        UcRefresh
+    })
+    [void]$global:UcMenu.Items.Add($mir)
+    [void]$global:UcMenu.Items.Add((New-Object Windows.Forms.ToolStripSeparator))
+
     $viewer = New-Object Windows.Forms.ToolStripMenuItem 'Open viewer window'
     $viewer.add_Click({
         $exe = Join-Path (Split-Path -Parent $global:UcDir) 'viewer\usbcam_view.exe'
@@ -153,8 +253,8 @@ function global:UcBuildMenu {
     [void]$global:UcMenu.Items.Add($wake)
 
     [void]$global:UcMenu.Items.Add((New-Object Windows.Forms.ToolStripSeparator))
-    $quit = New-Object Windows.Forms.ToolStripMenuItem 'Quit tray'
-    $quit.add_Click({ $global:UcTray.Visible = $false; [Windows.Forms.Application]::Exit() })
+    $quit = New-Object Windows.Forms.ToolStripMenuItem 'Quit tray (also turns the virtual camera off)'
+    $quit.add_Click({ UcVcStop; $global:UcTray.Visible = $false; [Windows.Forms.Application]::Exit() })
     [void]$global:UcMenu.Items.Add($quit)
 }
 
@@ -184,10 +284,12 @@ function global:UcRefresh {
         if ($tip.Length -gt 62) { $tip = $tip.Substring(0, 62) }
         $global:UcTray.Text = $tip
     }
+    if (UcVcRunning) { $global:UcVc = UcVcCtl '{"cmd":"status"}' } else { $global:UcVc = $null }
     if (-not $global:UcMenu.Visible) { UcBuildMenu }   # do not rebuild under the user's cursor
 }
 
 UcForward
+if ($global:UcCfg.vcam) { UcVcStart $true }
 UcRefresh
 $timer = New-Object Windows.Forms.Timer
 $timer.Interval = 4000
