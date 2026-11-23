@@ -21,6 +21,7 @@ static HMODULE g_mod = nullptr;
 static volatile LONG g_objects = 0;
 
 // stream category "capture" (PINNAME_CAPTURE), written out so we do not depend on ksmedia.h GUID definitions
+static const GUID kIID_IKsControl = { 0x28f54685, 0x06fd, 0x11d2, { 0xb2, 0x7a, 0x00, 0xa0, 0xc9, 0x22, 0x31, 0x96 } };
 static const GUID kPinCapture = { 0xfb6c4281, 0x0353, 0x11d1, { 0x90, 0x5f, 0x00, 0x00, 0xc0, 0xcc, 0x16, 0xba } };
 
 enum Fmt { F_NV12 = 0, F_YUY2 = 1, F_RGB32 = 2 };
@@ -366,7 +367,7 @@ public:
         if (!ppv) return E_POINTER;
         if (riid == IID_IUnknown || riid == IID_IMFMediaEventGenerator || riid == IID_IMFMediaSource || riid == IID_IMFMediaSourceEx) *ppv = static_cast<IMFMediaSourceEx*>(this);
         else if (riid == IID_IMFGetService) *ppv = static_cast<IMFGetService*>(this);
-        else if (riid == IID_IKsControl) *ppv = static_cast<IKsControl*>(this);
+        else if (riid == kIID_IKsControl) *ppv = static_cast<IKsControl*>(this);
         else { *ppv = nullptr; return E_NOINTERFACE; }
         AddRef(); return S_OK;
     }

@@ -231,9 +231,9 @@ static void RenderPlaceholder(int W, int H, int dots, const std::string& sub, st
     RoundRect(dc, cx - pw / 8, top + ph - ph / 8, cx + pw / 8, top + ph - ph / 14, 2, 2);
     SelectObject(dc, oldPen); SelectObject(dc, oldBr); DeleteObject(pen);
     SetBkMode(dc, TRANSPARENT);
-    HFONT big = CreateFontW(-H / 11, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
-    HFONT small = CreateFontW(-H / 24, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
-    HGDIOBJ oldFont = SelectObject(dc, big);
+    HFONT fontBig = CreateFontW(-H / 11, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+    HFONT fontSmall = CreateFontW(-H / 24, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+    HGDIOBJ oldFont = SelectObject(dc, fontBig);
     const wchar_t* title = L"Waiting for phone";
     SIZE ts = {}; GetTextExtentPoint32W(dc, title, (int)wcslen(title), &ts);
     int tx = (W - ts.cx) / 2, ty = H / 2 + H / 40;
@@ -241,13 +241,13 @@ static void RenderPlaceholder(int W, int H, int dots, const std::string& sub, st
     TextOutW(dc, tx, ty, title, (int)wcslen(title));
     wchar_t dd[4] = L"   "; for (int i = 0; i < dots && i < 3; i++) dd[i] = L'.';
     TextOutW(dc, tx + ts.cx, ty, dd, 3);
-    SelectObject(dc, small);
+    SelectObject(dc, fontSmall);
     wchar_t wsub[200] = {}; MultiByteToWideChar(CP_UTF8, 0, sub.c_str(), -1, wsub, 199);
     SIZE ss = {}; GetTextExtentPoint32W(dc, wsub, (int)wcslen(wsub), &ss);
     SetTextColor(dc, RGB(150, 160, 190));
     TextOutW(dc, (W - ss.cx) / 2, ty + ts.cy + H / 40, wsub, (int)wcslen(wsub));
     GdiFlush();
-    SelectObject(dc, oldFont); DeleteObject(big); DeleteObject(small);
+    SelectObject(dc, oldFont); DeleteObject(fontBig); DeleteObject(fontSmall);
     const uint8_t* px = (const uint8_t*)bits;   // BGRA
     uint8_t* Y = nv12.data(); uint8_t* UV = Y + (size_t)W * H;
     for (int y = 0; y < H; y++) for (int x = 0; x < W; x++) {
