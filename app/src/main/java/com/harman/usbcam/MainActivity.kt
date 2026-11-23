@@ -460,7 +460,10 @@ class MainActivity : AppCompatActivity() {
         if (st.action == 0) statusAction.visibility = View.GONE
         else { statusAction.visibility = View.VISIBLE; statusAction.setText(if (st.action == 1) R.string.st_fix_perm else R.string.st_try_again) }
 
-        chipBattery.text = if (s.battLevel >= 0) getString(if (s.plugged) R.string.chip_battery_charging else R.string.chip_battery, s.battLevel) else getString(R.string.chip_battery_unknown)
+        chipBattery.text = if (s.battLevel >= 0) getString(R.string.chip_battery, s.battLevel) else getString(R.string.chip_battery_unknown)
+        // charging is shown by the bolt icon instead of words; TalkBack still hears it
+        chipBattery.setChipIconResource(if (s.plugged) R.drawable.ic_battery_charging else R.drawable.ic_battery)
+        chipBattery.contentDescription = if (s.plugged && s.battLevel >= 0) getString(R.string.chip_battery_charging, s.battLevel) else chipBattery.text
         chipTemp.text = getString(R.string.chip_temp, s.battTemp)
         for (c in listOf(chipBattery, chipTemp)) {
             c.setTextColor(fg); c.chipIconTint = ColorStateList.valueOf(fg); c.chipStrokeColor = ColorStateList.valueOf(fg)

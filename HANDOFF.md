@@ -126,3 +126,4 @@ The user prefers direct, honest feedback, and narrow answers over long lists. Te
 - Device info is a separate page (`DeviceInfoActivity`, opened from the overflow menu): cards "Your phone", "Battery and heat", "Connection", "Cameras on this phone" in plain words; raw technical text under "Technical details" with a Copy button.
 - Launcher icon: user's Icon.png cropped to its rounded square -> `mipmap-*/ic_launcher(.png|_round.png)` + adaptive icon (`mipmap-anydpi-v26`, foreground `drawable-nodpi/ic_launcher_fg.png`, background colour `ic_launcher_bg` #140A68). Manifest `android:icon` / `roundIcon`.
 - Untested: adaptive-icon look on different launcher masks; card layout on tablets.
+- M6c: charging shown as bolt battery icon on the status-card chip (no 'charging' text; TalkBack description keeps it).
