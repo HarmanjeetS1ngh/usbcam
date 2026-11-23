@@ -141,6 +141,12 @@
     <string name="pro_ev">Brightness %1$s</string>
     <string name="pro_focus">Focus %1$s</string>
     <string name="pro_wb">White bal. %1$s</string>
+    <string name="wb_auto">Auto</string>
+    <string name="wb_daylight">Daylight</string>
+    <string name="wb_cloudy">Cloudy</string>
+    <string name="wb_shade">Shade</string>
+    <string name="wb_tungsten">Tungsten</string>
+    <string name="wb_fluor">Fluorescent</string>
     <string name="val_auto">Auto</string>
     <string name="val_locked">Locked</string>
     <string name="val_single">Single</string>

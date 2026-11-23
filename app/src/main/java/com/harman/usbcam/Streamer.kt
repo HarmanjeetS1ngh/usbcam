@@ -477,6 +477,7 @@ class Streamer(private val ctx: Context, private val onStatus: (String) -> Unit)
                     if (afTrigger) b.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_START)
                 }
             }
+            if (c.awbMode != CaptureRequest.CONTROL_AWB_MODE_AUTO && c.awbModes.contains(c.awbMode)) b.set(CaptureRequest.CONTROL_AWB_MODE, c.awbMode)
             if (c.awbLock) b.set(CaptureRequest.CONTROL_AWB_LOCK, true)
             c.point?.let { p -> region(p, c)?.let { r -> b.set(CaptureRequest.CONTROL_AF_REGIONS, r); b.set(CaptureRequest.CONTROL_AE_REGIONS, r) } }
         } catch (e: Exception) { log("applyCtl: ${e.message}") }

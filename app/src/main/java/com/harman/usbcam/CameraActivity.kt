@@ -22,6 +22,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.TooltipCompat
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
+import android.hardware.camera2.CameraMetadata
 import com.google.android.material.chip.Chip
 import com.google.android.material.slider.Slider
 import com.google.android.material.snackbar.Snackbar
@@ -56,6 +57,8 @@ class CameraActivity : AppCompatActivity() {
     private val chips = LinkedHashMap<String, Chip>()
     private val modeBtns = LinkedHashMap<Int, MaterialButton>()
     private var sel = "ISO"
+    private lateinit var wbBox: View
+    private val wbChips = LinkedHashMap<Int, Chip>() // camera white-balance mode -> its preset chip
     private var attached = false
     private var dragging = false
     private var controlsShown = true
@@ -137,6 +140,18 @@ class CameraActivity : AppCompatActivity() {
         }
 
         for ((n, c) in chips) c.setOnClickListener { sel = n; sync(); update() }
+        wbBox = findViewById(R.id.wb_box)
+        wbChips[CameraMetadata.CONTROL_AWB_MODE_AUTO] = findViewById(R.id.wb_auto)
+        wbChips[CameraMetadata.CONTROL_AWB_MODE_DAYLIGHT] = findViewById(R.id.wb_daylight)
+        wbChips[CameraMetadata.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT] = findViewById(R.id.wb_cloudy)
+        wbChips[CameraMetadata.CONTROL_AWB_MODE_SHADE] = findViewById(R.id.wb_shade)
+        wbChips[CameraMetadata.CONTROL_AWB_MODE_INCANDESCENT] = findViewById(R.id.wb_tungsten)
+        wbChips[CameraMetadata.CONTROL_AWB_MODE_FLUORESCENT] = findViewById(R.id.wb_fluor)
+        for ((mode, chip) in wbChips) chip.setOnClickListener {
+            val cc = ctl() ?: return@setOnClickListener
+            cc.awbMode = mode; cc.awbLock = false // picking a preset releases the white-balance lock
+            push(); sync(); update()
+        }
         autoBtn.setOnClickListener { auto() }
         slider.addOnChangeListener { _, v, fromUser -> if (fromUser) slide(v.roundToInt()) }
         slider.addOnSliderTouchListener(object : Slider.OnSliderTouchListener {
@@ -266,9 +281,11 @@ class CameraActivity : AppCompatActivity() {
         val c = ctl()
         for ((n, v) in chips) v.isChecked = (n == sel)
         slider.visibility = if (sel == "WB") View.INVISIBLE else View.VISIBLE
+        wbBox.visibility = if (sel == "WB") View.VISIBLE else View.GONE
         focusBox.visibility = if (sel == "FOCUS") View.VISIBLE else View.GONE
         if (c == null) return
         modeBtns[c.fm]?.let { modeGroup.check(it.id) }
+        for ((m, ch) in wbChips) { ch.visibility = if (m == CameraMetadata.CONTROL_AWB_MODE_AUTO || c.awbModes.contains(m)) View.VISIBLE else View.GONE; ch.isChecked = (m == c.awbMode) }
         focusHint.setText(when (c.fm) {
             CamControls.FM_SINGLE -> R.string.fm_single_hint; CamControls.FM_INF -> R.string.fm_inf_hint
             CamControls.FM_LOCK -> R.string.fm_lock_hint; CamControls.FM_MANUAL -> R.string.fm_manual_hint; else -> R.string.fm_auto_hint })
@@ -287,6 +304,15 @@ class CameraActivity : AppCompatActivity() {
     }
 
     private fun autoWord() = getString(R.string.val_auto)
+
+    private fun wbName(c: CamControls): String = if (c.awbLock) getString(R.string.val_locked) else when (c.awbMode) {
+        CameraMetadata.CONTROL_AWB_MODE_DAYLIGHT -> getString(R.string.wb_daylight)
+        CameraMetadata.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT -> getString(R.string.wb_cloudy)
+        CameraMetadata.CONTROL_AWB_MODE_SHADE -> getString(R.string.wb_shade)
+        CameraMetadata.CONTROL_AWB_MODE_INCANDESCENT -> getString(R.string.wb_tungsten)
+        CameraMetadata.CONTROL_AWB_MODE_FLUORESCENT -> getString(R.string.wb_fluor)
+        else -> autoWord()
+    }
 
     private fun focusName(c: CamControls) = when (c.fm) {
         CamControls.FM_SINGLE -> getString(R.string.val_single); CamControls.FM_INF -> "\u221E"
@@ -326,7 +352,7 @@ class CameraActivity : AppCompatActivity() {
         putChip(chips["SPEED"]!!, fmtExp(if (c.manualExp) c.expNs else c.liveExpNs), R.string.pro_speed)
         putChip(chips["EV"]!!, fmtEv(c), R.string.pro_ev)
         putChip(chips["FOCUS"]!!, focusName(c), R.string.pro_focus)
-        putChip(chips["WB"]!!, if (c.awbLock) getString(R.string.val_locked) else autoWord(), R.string.pro_wb)
+        putChip(chips["WB"]!!, wbName(c), R.string.pro_wb)
         val manual = when (sel) { "ISO", "SPEED" -> c.manualExp; "EV" -> c.ev != 0; "FOCUS" -> c.fm != CamControls.FM_AUTO; else -> c.awbLock }
         autoBtn.setText(if (sel == "WB") (if (c.awbLock) R.string.btn_unlock_wb else R.string.btn_lock_wb) else R.string.btn_auto)
         autoBtn.isChecked = if (sel == "WB") c.awbLock else !manual
@@ -335,7 +361,7 @@ class CameraActivity : AppCompatActivity() {
             "SPEED" -> fmtExp(if (c.manualExp) c.expNs else c.liveExpNs)
             "EV" -> fmtEv(c)
             "FOCUS" -> focusName(c)
-            else -> if (c.awbLock) getString(R.string.val_locked) else autoWord()
+            else -> wbName(c)
         })
         // follow auto values while the user is not dragging
         if (!dragging && !manual && sel != "WB") sync()

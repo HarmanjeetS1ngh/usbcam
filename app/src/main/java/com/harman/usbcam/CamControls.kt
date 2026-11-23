@@ -12,6 +12,8 @@ class CamControls {
     @Volatile var aeLock = false
     @Volatile var afLock = false
     @Volatile var awbLock = false
+    @Volatile var awbMode = CameraMetadata.CONTROL_AWB_MODE_AUTO                       // white-balance preset
+    @Volatile var awbModes: IntArray = intArrayOf(CameraMetadata.CONTROL_AWB_MODE_AUTO) // presets this camera lists
     @Volatile var manualExp = false; @Volatile var iso = 100; @Volatile var expNs = 10_000_000L
     @Volatile var focusMode = FM_AUTO; @Volatile var focusDist = 0f   // diopters, 0 = infinity
     @Volatile var ev = 0                                              // exposure-compensation steps
@@ -47,9 +49,10 @@ class CamControls {
         minFocus = ch.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE) ?: 0f
         aeLockOk = ch.get(CameraCharacteristics.CONTROL_AE_LOCK_AVAILABLE) == true
         activeArray = ch.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)
+        awbModes = ch.get(CameraCharacteristics.CONTROL_AWB_AVAILABLE_MODES) ?: intArrayOf(CameraMetadata.CONTROL_AWB_MODE_AUTO)
     }
 
     fun lockAeAf() { aeLock = true; afLock = true; focusDist = liveFocus }
     fun unlockAeAf() { aeLock = false; afLock = false; point = null }
-    fun reset() { unlockAeAf(); awbLock = false; manualExp = false; focusMode = FM_AUTO; ev = 0 }
+    fun reset() { unlockAeAf(); awbLock = false; awbMode = CameraMetadata.CONTROL_AWB_MODE_AUTO; manualExp = false; focusMode = FM_AUTO; ev = 0 }
 }

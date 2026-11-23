@@ -172,3 +172,9 @@ The user prefers direct, honest feedback, and narrow answers over long lists. Te
 - "Check for updates" button: LabelMedium text, smaller side padding, single line; version text BodyMedium, so the version no longer wraps.
 - M7d: tapping an open drop-down closes it. Cause: the dismiss listener cleared focus at once, which made Material's drop-down think it was closed, so the same tap's ACTION_UP re-opened it. Focus is now released 450 ms later and only if the list is not showing (releaseIdleDropdownFocus). Untested on device.
 - M7e: drop-down deselect is instant: dispatchTouchEvent swallows a tap on a field whose list is open / was just closed (so Material can't reopen it) and the dismiss listener clears focus on the next frame. Update dialog: notes headings dropped (the duplicate 'What's new' came from the markdown heading), one paragraph per item, emoji lines get no bullet. RELEASE_NOTES.md must now list ONLY the changes of the current build (not cumulative). Version 0.8. Untested on device.
+
+## M9 white balance presets (NOT COMPILED)
+- PRO panel > White bal. now shows preset chips: Auto, Daylight, Cloudy, Shade, Tungsten (INCANDESCENT), Fluorescent; only modes listed in CONTROL_AWB_AVAILABLE_MODES are shown. Picking a preset releases the WB lock; the existing Lock button still locks AWB.
+- Protected files touched (strictly needed, preset must reach the camera request): CamControls.kt (awbMode, awbModes, load() reads CONTROL_AWB_AVAILABLE_MODES, reset()), Streamer.applyCtl (one line: CONTROL_AWB_MODE when a preset is chosen and supported). Nothing else in Streamer/GlBridge/Caps/Service changed.
+- UI: wb_box chip row in activity_camera.xml, 5 new icons ic_wb_*.xml, strings wb_*, CameraActivity (wbChips, wbName, sync). Version 0.9.
+- Untested: whether the S22 lists all presets / honours them per lens; panel height in landscape with the extra row.
