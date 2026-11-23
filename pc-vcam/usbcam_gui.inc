@@ -6,6 +6,7 @@
 #include "imgui_impl_sdl2.h"
 #include "imgui_impl_sdlrenderer2.h"
 #include <algorithm>
+#include <cmath>
 
 // ---------- tiny JSON reader (phone replies) ----------
 struct JV {
@@ -62,7 +63,7 @@ static bool jparse_all(const std::string& txt, JV& v) { const char* p = txt.c_st
 
 // ---------- saved settings (%APPDATA%\UsbCam\app.ini) ----------
 struct GuiSettings {
-    bool vcam = true, mirror = false, phone_default = true;
+    bool vcam = true, mirror = false, phone_default = true, light = false;
     std::string cam; int w = 0, h = 0, fps = 0, br = 0;   // br in bit/s, 0 = automatic
 };
 static std::string settings_path() {
@@ -84,6 +85,7 @@ static void settings_load(GuiSettings& s) {
         if (k == "vcam") s.vcam = v == "1";
         else if (k == "mirror") s.mirror = v == "1";
         else if (k == "phone_default") s.phone_default = v == "1";
+        else if (k == "light") s.light = v == "1";
         else if (k == "cam") s.cam = v;
         else if (k == "w") s.w = atoi(v.c_str());
         else if (k == "h") s.h = atoi(v.c_str());
@@ -95,8 +97,8 @@ static void settings_load(GuiSettings& s) {
 static void settings_save(const GuiSettings& s) {
     FILE* f = fopen(settings_path().c_str(), "w");
     if (!f) return;
-    fprintf(f, "vcam=%d\nmirror=%d\nphone_default=%d\ncam=%s\nw=%d\nh=%d\nfps=%d\nbr=%d\n",
-            s.vcam ? 1 : 0, s.mirror ? 1 : 0, s.phone_default ? 1 : 0, s.cam.c_str(), s.w, s.h, s.fps, s.br);
+    fprintf(f, "vcam=%d\nmirror=%d\nphone_default=%d\nlight=%d\ncam=%s\nw=%d\nh=%d\nfps=%d\nbr=%d\n",
+            s.vcam ? 1 : 0, s.mirror ? 1 : 0, s.phone_default ? 1 : 0, s.light ? 1 : 0, s.cam.c_str(), s.w, s.h, s.fps, s.br);
     fclose(f);
 }
 
@@ -186,41 +188,219 @@ static void commit_selection(GuiState& g) {
     g.s.cam = c.id; g.s.w = m.w; g.s.h = m.h; g.s.fps = m.fps[g.fi];
 }
 
-// ---------- small widgets ----------
-static bool Toggle(const char* id, bool* v) {
+// ---------- Material Design 3 look (dark first, optional light) ----------
+// Non-ASCII characters are written as byte escapes so the file does not depend on the compiler's source charset.
+#define SEP " \xC2\xB7 "
+#define MUL "\xC3\x97"
+#define DEG "\xC2\xB0"
+
+struct Pal {
+    ImVec4 surf, card, high, pop, stage, onSurf, onVar, outl, outV, pri, onPri, secC, onSecC;
+    ImVec4 ok, okC, onOkC, warn, warnC, onWarnC, err, errC, onErrC;
+};
+static ImVec4 Hx(unsigned c) { return ImVec4(((c >> 16) & 255) / 255.0f, ((c >> 8) & 255) / 255.0f, (c & 255) / 255.0f, 1.0f); }
+static ImVec4 Mix(const ImVec4& a, const ImVec4& b, float t) { return ImVec4(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t, 1.0f); }
+static ImU32 Cu(const ImVec4& c) { return ImGui::GetColorU32(c); }   // also applies the disabled-state alpha
+
+static Pal pal_dark() {
+    Pal p;
+    p.surf = Hx(0x121318); p.card = Hx(0x1F1F25); p.high = Hx(0x34343A); p.pop = Hx(0x292A2F); p.stage = Hx(0x0D0E13);
+    p.onSurf = Hx(0xE3E1E9); p.onVar = Hx(0xC6C5D0); p.outl = Hx(0x90909A); p.outV = Hx(0x46464F);
+    p.pri = Hx(0xB7C4FF); p.onPri = Hx(0x1D2D78); p.secC = Hx(0x434659); p.onSecC = Hx(0xDFE1F9);
+    p.ok = Hx(0x78DC98); p.okC = Hx(0x0B4F2E); p.onOkC = Hx(0xA6F5BF);
+    p.warn = Hx(0xFFB95C); p.warnC = Hx(0x5C4000); p.onWarnC = Hx(0xFFDEA8);
+    p.err = Hx(0xFFB4AB); p.errC = Hx(0x93000A); p.onErrC = Hx(0xFFDAD6);
+    return p;
+}
+static Pal pal_light() {
+    Pal p;
+    p.surf = Hx(0xFAF8FF); p.card = Hx(0xEFEDF4); p.high = Hx(0xE3E1E9); p.pop = Hx(0xE9E7EF); p.stage = Hx(0xE3E1E9);
+    p.onSurf = Hx(0x1A1B21); p.onVar = Hx(0x45464F); p.outl = Hx(0x767680); p.outV = Hx(0xC6C5D0);
+    p.pri = Hx(0x4355B9); p.onPri = Hx(0xFFFFFF); p.secC = Hx(0xDCE1FF); p.onSecC = Hx(0x151B4A);
+    p.ok = Hx(0x1F7A45); p.okC = Hx(0xB7F2C9); p.onOkC = Hx(0x00210E);
+    p.warn = Hx(0x8A5100); p.warnC = Hx(0xFFDDB3); p.onWarnC = Hx(0x2C1600);
+    p.err = Hx(0xBA1A1A); p.errC = Hx(0xFFDAD6); p.onErrC = Hx(0x410002);
+    return p;
+}
+
+static Pal g_pal;
+static float g_sc = 1.0f;
+static ImFont *f_body = nullptr, *f_small = nullptr, *f_label = nullptr, *f_title = nullptr, *f_head = nullptr;   // nullptr = default font
+
+static void apply_theme(const Pal& p) {
+    ImVec4* c = ImGui::GetStyle().Colors;
+    c[ImGuiCol_Text] = p.onSurf; c[ImGuiCol_TextDisabled] = p.onVar;
+    c[ImGuiCol_WindowBg] = p.surf; c[ImGuiCol_ChildBg] = p.card; c[ImGuiCol_PopupBg] = p.pop;
+    c[ImGuiCol_Border] = p.outV; c[ImGuiCol_BorderShadow] = ImVec4(0, 0, 0, 0);
+    c[ImGuiCol_FrameBg] = p.high; c[ImGuiCol_FrameBgHovered] = Mix(p.high, p.onSurf, 0.08f); c[ImGuiCol_FrameBgActive] = Mix(p.high, p.onSurf, 0.12f);
+    c[ImGuiCol_Button] = p.secC; c[ImGuiCol_ButtonHovered] = Mix(p.secC, p.onSecC, 0.10f); c[ImGuiCol_ButtonActive] = Mix(p.secC, p.onSecC, 0.16f);
+    c[ImGuiCol_Header] = p.secC; c[ImGuiCol_HeaderHovered] = Mix(p.pop, p.onSurf, 0.10f); c[ImGuiCol_HeaderActive] = Mix(p.pop, p.onSurf, 0.16f);
+    c[ImGuiCol_SliderGrab] = p.pri; c[ImGuiCol_SliderGrabActive] = p.pri; c[ImGuiCol_CheckMark] = p.pri;
+    c[ImGuiCol_Separator] = p.outV; c[ImGuiCol_SeparatorHovered] = p.outV; c[ImGuiCol_SeparatorActive] = p.outV;
+    c[ImGuiCol_ScrollbarBg] = ImVec4(0, 0, 0, 0); c[ImGuiCol_ScrollbarGrab] = p.outV;
+    c[ImGuiCol_ScrollbarGrabHovered] = p.outl; c[ImGuiCol_ScrollbarGrabActive] = p.outl;
+}
+
+// ---------- text helpers ----------
+static ImVec2 TSize(ImFont* f, const char* t) {
+    ImGui::PushFont(f); ImVec2 s = ImGui::CalcTextSize(t); ImGui::PopFont(); return s;
+}
+static void DText(ImDrawList* dl, ImFont* f, ImVec2 pos, ImU32 col, const char* t) {
+    ImGui::PushFont(f); dl->AddText(ImGui::GetFont(), ImGui::GetFontSize(), pos, col, t); ImGui::PopFont();
+}
+static void TextC(ImFont* f, const ImVec4& c, const char* s, bool wrap = false) {
+    ImGui::PushFont(f); ImGui::PushStyleColor(ImGuiCol_Text, c);
+    if (wrap) ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextUnformatted(s);
+    if (wrap) ImGui::PopTextWrapPos();
+    ImGui::PopStyleColor(); ImGui::PopFont();
+}
+static void SdlCol(SDL_Renderer* r, const ImVec4& c) {
+    SDL_SetRenderDrawColor(r, (Uint8)(c.x * 255.0f + 0.5f), (Uint8)(c.y * 255.0f + 0.5f), (Uint8)(c.z * 255.0f + 0.5f), 255);
+}
+
+// ---------- M3 widgets ----------
+// filled card (surface container, 16dp radius, 16dp padding, grows with its content)
+static void CardBegin(const char* id) {
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 16.0f * g_sc);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f * g_sc, 16.0f * g_sc));
+    ImGui::BeginChild(id, ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding,
+                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    ImGui::PopStyleVar(2);
+}
+static void CardEnd() { ImGui::EndChild(); }
+
+// M3 switch: 52x32dp track, thumb grows and shows a check when on
+static bool Switch(const char* id, bool* v) {
+    const float sc = g_sc, w = 52.0f * sc, h = 32.0f * sc;
     ImVec2 p = ImGui::GetCursorScreenPos();
-    ImDrawList* dl = ImGui::GetWindowDrawList();
-    float h = ImGui::GetFrameHeight(), w = h * 1.8f, r = h * 0.5f;
     ImGui::InvisibleButton(id, ImVec2(w, h));
     bool ch = false;
     if (ImGui::IsItemClicked()) { *v = !*v; ch = true; }
-    ImU32 bg = *v ? IM_COL32(40, 170, 90, 255) : IM_COL32(95, 98, 112, 255);
-    dl->AddRectFilled(p, ImVec2(p.x + w, p.y + h), bg, r);
-    dl->AddCircleFilled(ImVec2(*v ? p.x + w - r : p.x + r, p.y + r), r - 3.0f, IM_COL32(255, 255, 255, 255));
+    if (ImGui::IsItemHovered()) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+    float goal = *v ? 1.0f : 0.0f;
+    float& tr = *ImGui::GetStateStorage()->GetFloatRef(ImGui::GetItemID(), goal);
+    tr += (goal - tr) * std::min(1.0f, ImGui::GetIO().DeltaTime * 20.0f);
+    const float t = tr;
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    dl->AddRectFilled(p, ImVec2(p.x + w, p.y + h), Cu(Mix(g_pal.high, g_pal.pri, t)), h * 0.5f);
+    if (t < 0.98f) {
+        ImVec4 o = g_pal.outl; o.w = 1.0f - t;
+        dl->AddRect(ImVec2(p.x + sc, p.y + sc), ImVec2(p.x + w - sc, p.y + h - sc), Cu(o), h * 0.5f, 0, 2.0f * sc);
+    }
+    float cx = p.x + 16.0f * sc + (w - 32.0f * sc) * t, cy = p.y + h * 0.5f;
+    dl->AddCircleFilled(ImVec2(cx, cy), (8.0f + 4.0f * t) * sc, Cu(Mix(g_pal.outl, g_pal.onPri, t)), 24);
+    if (t > 0.5f) {
+        ImVec4 k = g_pal.pri; k.w = (t - 0.5f) * 2.0f;
+        ImVec2 pts[3] = { ImVec2(cx - 4.0f * sc, cy), ImVec2(cx - 1.5f * sc, cy + 3.0f * sc), ImVec2(cx + 4.0f * sc, cy - 3.0f * sc) };
+        dl->AddPolyline(pts, 3, Cu(k), 0, 2.0f * sc);
+    }
     return ch;
 }
-static void Section(const char* t, float sc) {
-    ImGui::Dummy(ImVec2(0, 6 * sc));
-    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.50f, 0.60f, 0.90f, 1));
-    ImGui::TextUnformatted(t);
-    ImGui::PopStyleColor();
-    ImGui::Separator();
-    ImGui::Dummy(ImVec2(0, 2 * sc));
+// list row: label on the left, switch on the right
+static bool SwitchRow(const char* id, const char* label, bool* v, bool title) {
+    const float h = 32.0f * g_sc;
+    float avail = ImGui::GetContentRegionAvail().x;
+    ImVec2 p = ImGui::GetCursorScreenPos();
+    ImFont* f = title ? f_title : f_body;
+    ImGui::PushFont(f);
+    float th = ImGui::GetTextLineHeight();
+    ImGui::SetCursorScreenPos(ImVec2(p.x, p.y + (h - th) * 0.5f));
+    ImGui::TextUnformatted(label);
+    ImGui::PopFont();
+    ImGui::SetCursorScreenPos(ImVec2(p.x + avail - 52.0f * g_sc, p.y));
+    return Switch(id, v);
 }
+// M3 segmented button; returns the (possibly new) selected index
+static int Segmented(const char* id, const char* const* lab, int n, int sel) {
+    const float sc = g_sc, h = 36.0f * sc;
+    float w = ImGui::GetContentRegionAvail().x, sw = w / (float)n;
+    ImVec2 p = ImGui::GetCursorScreenPos();
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    int res = sel;
+    ImGui::PushID(id);
+    for (int i = 0; i < n; i++) {
+        ImVec2 a(p.x + sw * (float)i, p.y), b(p.x + sw * (float)(i + 1), p.y + h);
+        ImGui::SetCursorScreenPos(a);
+        ImGui::PushID(i);
+        ImGui::InvisibleButton("##seg", ImVec2(b.x - a.x, h));
+        ImGui::PopID();
+        bool hov = ImGui::IsItemHovered();
+        if (ImGui::IsItemClicked()) res = i;
+        if (hov) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+        ImDrawFlags fl = n == 1 ? ImDrawFlags_RoundCornersAll : (i == 0 ? ImDrawFlags_RoundCornersLeft : (i == n - 1 ? ImDrawFlags_RoundCornersRight : ImDrawFlags_RoundCornersNone));
+        bool on = i == sel;
+        if (on) dl->AddRectFilled(a, b, Cu(g_pal.secC), h * 0.5f, fl);
+        else if (hov) dl->AddRectFilled(a, b, Cu(Mix(g_pal.card, g_pal.onSurf, 0.08f)), h * 0.5f, fl);
+        ImVec4 fg = on ? g_pal.onSecC : g_pal.onVar;
+        ImVec2 ts = TSize(f_label, lab[i]);
+        float ck = on ? 14.0f * sc + 8.0f * sc : 0.0f;
+        float x0 = a.x + ((b.x - a.x) - (ts.x + ck)) * 0.5f, cy = a.y + h * 0.5f;
+        if (on) {
+            ImVec2 pts[3] = { ImVec2(x0, cy), ImVec2(x0 + 4.0f * sc, cy + 4.0f * sc), ImVec2(x0 + 12.0f * sc, cy - 4.0f * sc) };
+            dl->AddPolyline(pts, 3, Cu(fg), 0, 2.0f * sc);
+        }
+        DText(dl, f_label, ImVec2(x0 + ck, cy - ts.y * 0.5f), Cu(fg), lab[i]);
+    }
+    ImGui::PopID();
+    for (int i = 1; i < n; i++) dl->AddLine(ImVec2(p.x + sw * (float)i, p.y), ImVec2(p.x + sw * (float)i, p.y + h), Cu(g_pal.outl), 1.0f);
+    dl->AddRect(p, ImVec2(p.x + w, p.y + h), Cu(g_pal.outl), h * 0.5f, 0, 1.0f);
+    ImGui::SetCursorScreenPos(ImVec2(p.x, p.y));
+    ImGui::Dummy(ImVec2(w, h));
+    return res;
+}
+// status chip: pill with a dot and a label
+static void Chip(const char* t, const ImVec4& bg, const ImVec4& fg, const ImVec4& dot) {
+    const float sc = g_sc, h = 32.0f * sc, px = 12.0f * sc, r = 5.0f * sc;
+    ImVec2 ts = TSize(f_label, t);
+    float w = px + r * 2.0f + 8.0f * sc + ts.x + px;
+    float avail = ImGui::GetContentRegionAvail().x;
+    if (w > avail) w = avail;
+    ImVec2 p = ImGui::GetCursorScreenPos();
+    ImGui::Dummy(ImVec2(w, h));
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    dl->AddRectFilled(p, ImVec2(p.x + w, p.y + h), Cu(bg), h * 0.5f);
+    dl->AddCircleFilled(ImVec2(p.x + px + r, p.y + h * 0.5f), r, Cu(dot), 16);
+    DText(dl, f_label, ImVec2(p.x + px + r * 2.0f + 8.0f * sc, p.y + (h - ts.y) * 0.5f), Cu(fg), t);
+}
+// label on the left, value on the right
+static void KV(const char* k, const char* v) {
+    ImVec2 vs = TSize(f_body, v);
+    TextC(f_body, g_pal.onVar, k);
+    ImGui::SameLine();
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - vs.x);
+    TextC(f_body, g_pal.onSurf, v);
+}
+// rounds the corners of a rectangle that was drawn with square corners: a thick stroke in the background colour just outside it
+static void RoundOut(ImDrawList* dl, ImVec2 a, ImVec2 b, float r, float t, ImU32 col) {
+    float h = t * 0.5f + 0.5f;
+    dl->AddRect(ImVec2(a.x - h, a.y - h), ImVec2(b.x + h, b.y + h), col, r + h, ImDrawFlags_RoundCornersAll, t);
+}
+static void Overlay(ImDrawList* dl, ImVec2 pos, const char* t) {
+    ImVec2 ts = TSize(f_small, t);
+    float px = 12.0f * g_sc, h = ts.y + 12.0f * g_sc;
+    dl->AddRectFilled(pos, ImVec2(pos.x + ts.x + px * 2.0f, pos.y + h), IM_COL32(0, 0, 0, 150), h * 0.5f);
+    DText(dl, f_small, ImVec2(pos.x + px, pos.y + 6.0f * g_sc), IM_COL32(255, 255, 255, 235), t);
+}
+
 template <class F> static auto imrender(F f, ImDrawData* d, SDL_Renderer* r, int) -> decltype(f(d, r), void()) { f(d, r); }
 template <class F> static void imrender(F f, ImDrawData* d, SDL_Renderer*, long) { f(d); }
 
-static void status_view(bool live, std::string& title, ImU32& col) {
+// 0 idle, 1 live, 2 waiting / working, 3 error
+static int status_view(bool live, std::string& title) {
     std::string s = get_status();
-    const ImU32 green = IM_COL32(60, 200, 110, 255), amber = IM_COL32(235, 170, 50, 255), red = IM_COL32(230, 80, 80, 255), grey = IM_COL32(140, 143, 155, 255);
-    if (live) { title = "Live"; col = green; }
-    else if (s.rfind("waiting for phone", 0) == 0) { title = "Waiting for phone"; col = amber; }
-    else if (s.rfind("cannot reach", 0) == 0) { title = "Can't reach the phone app"; col = red; }
-    else if (s.rfind("phone camera is switched off", 0) == 0) { title = "Phone camera is off"; col = amber; }
-    else if (s.rfind("idle", 0) == 0) { title = "Idle"; col = grey; }
-    else if (s.rfind("connection lost", 0) == 0) { title = "Reconnecting"; col = amber; }
-    else if (s.rfind("starting", 0) == 0 || s.rfind("streaming", 0) == 0 || s.rfind("restarting", 0) == 0) { title = "Connecting..."; col = amber; }
-    else { title = s; col = amber; }
+    if (live) { title = "Live"; return 1; }
+    if (s.rfind("waiting for phone", 0) == 0) { title = "Waiting for phone"; return 2; }
+    if (s.rfind("cannot reach", 0) == 0) { title = "Can't reach the phone app"; return 3; }
+    if (s.rfind("cannot open video", 0) == 0) { title = "Video connection failed"; return 3; }
+    if (s.rfind("decoder open failed", 0) == 0) { title = "Decoder failed"; return 3; }
+    if (s.rfind("phone refused", 0) == 0) { title = "Phone refused to start"; return 3; }
+    if (s.rfind("phone camera is switched off", 0) == 0) { title = "Phone camera is off"; return 2; }
+    if (s.rfind("idle", 0) == 0) { title = "Idle"; return 0; }
+    if (s.rfind("connection lost", 0) == 0) { title = "Reconnecting"; return 2; }
+    if (s.rfind("starting", 0) == 0 || s.rfind("streaming", 0) == 0 || s.rfind("restarting", 0) == 0) { title = "Connecting..."; return 2; }
+    title = s.empty() ? std::string("Starting...") : (s.size() > 30 ? s.substr(0, 30) + "..." : s);
+    return 2;
 }
 
 // ---------- the window ----------
@@ -229,37 +409,43 @@ static void gui_loop() {
     UINT dpi = GetDpiForSystem();
     float sc = dpi ? (float)dpi / 96.0f : 1.0f;
     if (sc < 1.0f) sc = 1.0f;
+    g_sc = sc;
     if (SDL_Init(SDL_INIT_VIDEO) != 0) { ulog("[error] SDL init failed: %s", SDL_GetError()); return; }
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
-    SDL_Window* win = SDL_CreateWindow("UsbCam", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, (int)(1120 * sc), (int)(660 * sc), SDL_WINDOW_RESIZABLE);
+    SDL_Window* win = SDL_CreateWindow("UsbCam", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, (int)(1120 * sc), (int)(680 * sc), SDL_WINDOW_RESIZABLE);
     SDL_Renderer* ren = win ? SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC) : nullptr;
     if (win && !ren) ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_SOFTWARE);
     if (!win || !ren) { ulog("[error] window failed: %s", SDL_GetError()); return; }
-    SDL_SetWindowMinimumSize(win, (int)(760 * sc), (int)(560 * sc));
+    SDL_SetWindowMinimumSize(win, (int)(880 * sc), (int)(560 * sc));
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     io.IniFilename = nullptr;
     char wd[MAX_PATH]; UINT wn = GetWindowsDirectoryA(wd, MAX_PATH);
-    std::string ttf = std::string(wn ? wd : "C:\\Windows") + "\\Fonts\\segoeui.ttf";
-    if (GetFileAttributesA(ttf.c_str()) != INVALID_FILE_ATTRIBUTES) io.Fonts->AddFontFromFileTTF(ttf.c_str(), 17.0f * sc);
-    else io.FontGlobalScale = sc * 1.2f;
-    ImGui::StyleColorsDark();
+    std::string fdir = std::string(wn ? wd : "C:\\Windows") + "\\Fonts\\";
+    std::string reg = fdir + "segoeui.ttf", semi = fdir + "seguisb.ttf";
+    if (GetFileAttributesA(reg.c_str()) != INVALID_FILE_ATTRIBUTES) {
+        if (GetFileAttributesA(semi.c_str()) == INVALID_FILE_ATTRIBUTES) semi = reg;
+        f_body = io.Fonts->AddFontFromFileTTF(reg.c_str(), 15.0f * sc);     // body (default font)
+        f_small = io.Fonts->AddFontFromFileTTF(reg.c_str(), 13.0f * sc);    // supporting text
+        f_label = io.Fonts->AddFontFromFileTTF(semi.c_str(), 14.0f * sc);   // buttons, chips, field labels
+        f_title = io.Fonts->AddFontFromFileTTF(semi.c_str(), 17.0f * sc);   // card titles
+        f_head = io.Fonts->AddFontFromFileTTF(semi.c_str(), 26.0f * sc);    // app / empty-state headline
+    } else io.FontGlobalScale = sc * 1.2f;
     ImGuiStyle& st = ImGui::GetStyle();
-    st.WindowRounding = 0; st.FrameRounding = 6 * sc; st.GrabRounding = 6 * sc; st.PopupRounding = 6 * sc;
-    st.ItemSpacing = ImVec2(8 * sc, 8 * sc); st.FramePadding = ImVec2(10 * sc, 6 * sc); st.WindowPadding = ImVec2(18 * sc, 16 * sc);
-    st.WindowBorderSize = 0;
-    st.Colors[ImGuiCol_WindowBg] = ImVec4(0.105f, 0.115f, 0.15f, 1);
-    st.Colors[ImGuiCol_FrameBg] = ImVec4(0.17f, 0.18f, 0.23f, 1);
-    st.Colors[ImGuiCol_PopupBg] = ImVec4(0.14f, 0.15f, 0.20f, 1);
-    st.Colors[ImGuiCol_CheckMark] = ImVec4(0.45f, 0.65f, 1.0f, 1);
-    st.Colors[ImGuiCol_SliderGrab] = ImVec4(0.45f, 0.65f, 1.0f, 1);
+    st.WindowRounding = 0; st.ChildRounding = 16 * sc; st.FrameRounding = 12 * sc; st.GrabRounding = 10 * sc; st.PopupRounding = 12 * sc;
+    st.ScrollbarRounding = 4 * sc; st.ScrollbarSize = 8 * sc; st.GrabMinSize = 20 * sc;
+    st.ItemSpacing = ImVec2(8 * sc, 8 * sc); st.ItemInnerSpacing = ImVec2(8 * sc, 8 * sc);
+    st.FramePadding = ImVec2(14 * sc, 10 * sc); st.WindowPadding = ImVec2(16 * sc, 16 * sc);
+    st.WindowBorderSize = 0; st.ChildBorderSize = 0; st.PopupBorderSize = 0; st.FrameBorderSize = 0;
     ImGui_ImplSDL2_InitForSDLRenderer(win, ren);
     ImGui_ImplSDLRenderer2_Init(ren);
 
     GuiState gs;
     settings_load(gs.s);
+    g_pal = gs.s.light ? pal_light() : pal_dark();
+    apply_theme(g_pal);
     g_mirror = gs.s.mirror ? 1 : 0;
     gui_apply(gs.s, false);
     std::string vcam_msg;
@@ -304,21 +490,31 @@ static void gui_loop() {
             }
         }
 
+        // layout: preview stage on the left, 400dp control panel on the right, 16dp margins
         int ww = 0, wh = 0;
         SDL_GetRendererOutputSize(ren, &ww, &wh);
-        float panelW = 390 * sc; if (panelW > ww * 0.5f) panelW = ww * 0.5f;
+        float panelW = 400 * sc; if (panelW > ww * 0.5f) panelW = ww * 0.5f;
+        const float mg = 16 * sc, pad = 8 * sc;
+        const float sx0 = mg, sy0 = mg, sx1 = (float)ww - panelW, sy1 = (float)wh - mg;
         bool live = have_frame && (now_us() - g_prev_us.load()) < 1500000;
-        SDL_SetRenderDrawColor(ren, 12, 13, 17, 255);
+
+        SdlCol(ren, g_pal.surf);
         SDL_RenderClear(ren);
+        SdlCol(ren, g_pal.stage);
+        SDL_Rect stg = { (int)sx0, (int)sy0, (int)(sx1 - sx0), (int)(sy1 - sy0) };
+        SDL_RenderFillRect(ren, &stg);
+        bool vid = false;
+        SDL_Rect dst = { 0, 0, 0, 0 };
         if (tex) {
-            float aw = ww - panelW - 32 * sc, ah = wh - 32 * sc;
+            float aw = sx1 - sx0 - 2 * pad, ah = sy1 - sy0 - 2 * pad;
             float s = std::min(aw / (float)tw, ah / (float)th);
             if (s > 0) {
                 int dw = (int)(tw * s), dh = (int)(th * s);
-                SDL_Rect dst = { (int)((ww - panelW - dw) / 2), (wh - dh) / 2, dw, dh };
+                dst.x = (int)(sx0 + (sx1 - sx0 - dw) * 0.5f); dst.y = (int)(sy0 + (sy1 - sy0 - dh) * 0.5f); dst.w = dw; dst.h = dh;
                 Uint8 c = live ? 255 : 80;
                 SDL_SetTextureColorMod(tex, c, c, c);
                 SDL_RenderCopyEx(ren, tex, nullptr, &dst, 0, nullptr, g_mirror.load() ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE);
+                vid = true;
             }
         }
 
@@ -331,78 +527,140 @@ static void gui_loop() {
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
 
-        std::string title; ImU32 dot; status_view(live, title, dot);
-        // big centred text on the video area while nothing is live
-        if (!live) {
+        std::string title; int kind = status_view(live, title);
+        double fps = g_stat_fps.load(), lat = g_stat_lat.load();
+
+        // preview stage: rounded corners for the stage and for the picture, state text when nothing is live
+        {
             ImDrawList* bg = ImGui::GetBackgroundDrawList();
-            std::string sub = get_sub();
-            float cx = (ww - panelW) * 0.5f, cy = wh * 0.5f;
-            ImVec2 t1 = ImGui::CalcTextSize(title.c_str());
-            bg->AddText(ImGui::GetFont(), ImGui::GetFontSize() * 1.6f, ImVec2(cx - t1.x * 0.8f, cy - 30 * sc), IM_COL32(235, 238, 250, 255), title.c_str());
-            ImVec2 t2 = ImGui::CalcTextSize(sub.c_str());
-            bg->AddText(ImVec2(cx - t2.x * 0.5f, cy + 14 * sc), IM_COL32(150, 156, 180, 255), sub.c_str());
+            if (vid) RoundOut(bg, ImVec2((float)dst.x, (float)dst.y), ImVec2((float)(dst.x + dst.w), (float)(dst.y + dst.h)), 12 * sc, 16 * sc, Cu(g_pal.stage));
+            RoundOut(bg, ImVec2(sx0, sy0), ImVec2(sx1, sy1), 24 * sc, 40 * sc, Cu(g_pal.surf));
+            if (!live) {
+                std::string sub = get_sub();
+                ImVec2 t1 = TSize(f_head, title.c_str()), t2 = TSize(f_body, sub.c_str());
+                float iw = 32 * sc, ih = 56 * sc, gap = 16 * sc;
+                float total = ih + gap + t1.y + 8 * sc + t2.y;
+                float cx = (sx0 + sx1) * 0.5f, y = (sy0 + sy1) * 0.5f - total * 0.5f;
+                bg->AddRect(ImVec2(cx - iw * 0.5f, y), ImVec2(cx + iw * 0.5f, y + ih), Cu(g_pal.outl), 8 * sc, 0, 2 * sc);
+                bg->AddLine(ImVec2(cx - 5 * sc, y + ih - 8 * sc), ImVec2(cx + 5 * sc, y + ih - 8 * sc), Cu(g_pal.outl), 2 * sc);
+                y += ih + gap;
+                DText(bg, f_head, ImVec2(cx - t1.x * 0.5f, y), Cu(g_pal.onSurf), title.c_str());
+                y += t1.y + 8 * sc;
+                DText(bg, f_body, ImVec2(cx - t2.x * 0.5f, y), Cu(g_pal.onVar), sub.c_str());
+            } else if (vid) {
+                char ov[96];
+                snprintf(ov, sizeof ov, "%d" MUL "%d" SEP "%.0f fps" SEP "%.0f ms", tw, th, fps, lat);
+                float oh = TSize(f_small, ov).y + 12 * sc;
+                Overlay(bg, ImVec2((float)dst.x + 12 * sc, (float)(dst.y + dst.h) - 12 * sc - oh), ov);
+            }
         }
 
         ImGui::SetNextWindowPos(ImVec2((float)ww - panelW, 0));
         ImGui::SetNextWindowSize(ImVec2(panelW, (float)wh));
         ImGui::Begin("##panel", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings);
 
-        // status
+        // header: app name + theme button
+        TextC(f_head, g_pal.onSurf, "UsbCam");
         {
-            ImVec2 p = ImGui::GetCursorScreenPos();
-            float r = 7 * sc;
-            ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2(p.x + r, p.y + ImGui::GetTextLineHeight() * 0.5f + 2), r, dot);
-            ImGui::Dummy(ImVec2(r * 2 + 6 * sc, 0)); ImGui::SameLine();
-            ImGui::TextUnformatted(title.c_str());
-            double fps = g_stat_fps.load(), lat = g_stat_lat.load();
-            if (live && fps > 0) { ImGui::TextDisabled("%.0f fps  |  about %.0f ms from camera to PC", fps, lat); }
-            else { std::string sub = get_sub(); ImGui::PushTextWrapPos(0); ImGui::TextDisabled("%s", sub.c_str()); ImGui::PopTextWrapPos(); }
+            const char* lbl = gs.s.light ? "Dark theme" : "Light theme";
+            float bw = TSize(f_label, lbl).x + 32 * sc;
+            ImGui::SameLine();
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - bw);
+            ImGui::PushFont(f_label);
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 16 * sc);
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(16 * sc, 6 * sc));
+            ImGui::PushStyleColor(ImGuiCol_Text, g_pal.onSecC);
+            if (ImGui::Button(lbl, ImVec2(bw, 0))) {
+                gs.s.light = !gs.s.light;
+                g_pal = gs.s.light ? pal_light() : pal_dark();
+                apply_theme(g_pal);
+                settings_save(gs.s);
+            }
+            ImGui::PopStyleColor(); ImGui::PopStyleVar(2); ImGui::PopFont();
         }
 
+        // status
+        CardBegin("##status");
+        {
+            ImVec4 cbg = Mix(g_pal.card, g_pal.onSurf, 0.10f), cfg = g_pal.onSurf, cdot = g_pal.outl;
+            if (kind == 1) { cbg = g_pal.okC; cfg = g_pal.onOkC; cdot = g_pal.ok; cdot.w = 0.55f + 0.45f * (0.5f + 0.5f * sinf((float)ImGui::GetTime() * 4.0f)); }
+            else if (kind == 2) { cbg = g_pal.warnC; cfg = g_pal.onWarnC; cdot = g_pal.warn; }
+            else if (kind == 3) { cbg = g_pal.errC; cfg = g_pal.onErrC; cdot = g_pal.err; }
+            Chip(title.c_str(), cbg, cfg, cdot);
+            if (live && fps > 0) {
+                char sb[96];
+                snprintf(sb, sizeof sb, "%.0f fps" SEP "about %.0f ms from camera to PC", fps, lat);
+                TextC(f_small, g_pal.onVar, sb, true);
+            } else TextC(f_small, g_pal.onVar, get_sub().c_str(), true);
+        }
+        CardEnd();
+
         // virtual camera
-        Section("VIRTUAL CAMERA", sc);
+        CardBegin("##vcam");
         {
             bool v = g_vcam_on.load();
             ImGui::BeginDisabled(!g_vcam_supported);
-            if (Toggle("##vc", &v)) {
+            if (SwitchRow("##vc", "Virtual camera", &v, true)) {
                 std::string err; bool ok = vcam_enable(v, err);
                 vcam_msg = ok ? std::string() : err;
                 gs.s.vcam = ok ? v : false;
                 settings_save(gs.s);
             }
             ImGui::EndDisabled();
-            ImGui::SameLine(); ImGui::TextUnformatted(g_vcam_on.load() ? "On - \"UsbCam Camera\"" : "Off");
-            ImGui::PushTextWrapPos(0);
-            if (!g_vcam_supported) { ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.45f, 0.45f, 1)); ImGui::TextWrapped("%s", g_vcam_why.c_str()); ImGui::PopStyleColor(); }
-            else if (!vcam_msg.empty()) { ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.45f, 0.45f, 1)); ImGui::TextWrapped("%s", vcam_msg.c_str()); ImGui::PopStyleColor(); }
+            TextC(f_small, g_pal.onVar, g_vcam_on.load() ? "On" SEP "\"UsbCam Camera\"" : "Off", true);
+            if (!g_vcam_supported) TextC(f_small, g_pal.err, g_vcam_why.c_str(), true);
+            else if (!vcam_msg.empty()) TextC(f_small, g_pal.err, vcam_msg.c_str(), true);
             else if (g_vcam_on.load()) {
-                if (consumer_recent(2000)) { ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.45f, 0.85f, 0.55f, 1)); ImGui::TextWrapped("An app is using the camera."); ImGui::PopStyleColor(); }
-                else ImGui::TextDisabled("Ready. Choose \"UsbCam Camera\" in Zoom, Meet, Teams or Discord.");
+                if (consumer_recent(2000)) TextC(f_small, g_pal.ok, "An app is using the camera.", true);
+                else TextC(f_small, g_pal.onVar, "Ready. Choose \"UsbCam Camera\" in Zoom, Meet, Teams or Discord.", true);
             }
-            ImGui::PopTextWrapPos();
+            ImGui::Separator();
             bool mir = g_mirror.load() != 0;
-            if (ImGui::Checkbox("Mirror picture", &mir)) {
+            if (SwitchRow("##mir", "Mirror picture", &mir, false)) {
                 g_mirror = mir ? 1 : 0;
                 if (g_sh.hdr) g_sh.hdr->mirror = g_mirror.load();
                 gs.s.mirror = mir; settings_save(gs.s);
             }
         }
+        CardEnd();
 
-        // picture
-        Section("PHONE PICTURE", sc);
+        // phone
+        CardBegin("##phone");
         {
-            bool pd = gs.s.phone_default;
-            if (ImGui::Checkbox("Use the phone's own settings", &pd)) {
-                gs.s.phone_default = pd;
-                if (!pd) commit_selection(gs);
+            TextC(f_title, g_pal.onSurf, "Phone");
+            JV pv;
+            if (!pst.empty() && jparse_all(pst, pv) && pv.t == 'o' && pv.get("batt")) {
+                char b1[48], b2[48];
+                snprintf(b1, sizeof b1, "%d%%%s", (int)pv.num("batt"), pv.num("plugged") > 0 ? SEP "charging" : "");
+                snprintf(b2, sizeof b2, "%.1f " DEG "C", pv.num("tempC"));
+                KV("Battery", b1);
+                KV("Temperature", b2);
+                if (pv.num("guardStage") > 0) {
+                    std::string gm = pv.str("guard");
+                    TextC(f_small, g_pal.warn, gm.empty() ? "The phone is protecting itself (heat or battery)." : gm.c_str(), true);
+                }
+            } else TextC(f_small, g_pal.onVar, "Not connected", true);
+        }
+        CardEnd();
+
+        // phone picture
+        CardBegin("##pic");
+        {
+            TextC(f_title, g_pal.onSurf, "Phone picture");
+            static const char* const srcLab[2] = { "Phone default", "Custom" };
+            int ssel = gs.s.phone_default ? 0 : 1;
+            int sn = Segmented("##src", srcLab, 2, ssel);
+            if (sn != ssel) {
+                gs.s.phone_default = sn == 0;
+                if (!gs.s.phone_default) commit_selection(gs);
                 gui_apply(gs.s, true);
             }
             if (!gs.s.phone_default) {
                 if (gs.cams.empty()) {
-                    ImGui::PushTextWrapPos(0); ImGui::TextDisabled("The camera list appears once the phone is connected."); ImGui::PopTextWrapPos();
+                    TextC(f_small, g_pal.onVar, "The camera list appears once the phone is connected.", true);
                 } else {
                     bool changed = false;
-                    ImGui::TextDisabled("Camera");
+                    TextC(f_label, g_pal.onVar, "Camera");
                     ImGui::SetNextItemWidth(-1);
                     if (ImGui::BeginCombo("##cam", gs.cams[gs.ci].name.c_str())) {
                         for (int i = 0; i < (int)gs.cams.size(); i++) {
@@ -411,7 +669,7 @@ static void gui_loop() {
                         ImGui::EndCombo();
                     }
                     GCam& c = gs.cams[gs.ci];
-                    ImGui::TextDisabled("Resolution");
+                    TextC(f_label, g_pal.onVar, "Resolution");
                     ImGui::SetNextItemWidth(-1);
                     if (ImGui::BeginCombo("##res", c.modes[gs.mi].label.c_str())) {
                         for (int i = 0; i < (int)c.modes.size(); i++) {
@@ -421,7 +679,7 @@ static void gui_loop() {
                     }
                     GMode& m = c.modes[gs.mi];
                     char fb[32]; snprintf(fb, sizeof fb, "%d fps", m.fps[gs.fi]);
-                    ImGui::TextDisabled("Frame rate");
+                    TextC(f_label, g_pal.onVar, "Frame rate");
                     ImGui::SetNextItemWidth(-1);
                     if (ImGui::BeginCombo("##fps", fb)) {
                         for (int i = 0; i < (int)m.fps.size(); i++) {
@@ -432,42 +690,33 @@ static void gui_loop() {
                     }
                     if (changed) { commit_selection(gs); gui_apply(gs.s, true); }
                 }
-                bool autoq = gs.s.br == 0;
-                if (ImGui::Checkbox("Automatic quality", &autoq)) { gs.s.br = autoq ? 0 : 12000000; gui_apply(gs.s, true); }
-                if (!autoq) {
+                TextC(f_label, g_pal.onVar, "Quality");
+                static const char* const qLab[2] = { "Automatic", "Manual" };
+                int qsel = gs.s.br == 0 ? 0 : 1;
+                int qn = Segmented("##q", qLab, 2, qsel);
+                if (qn != qsel) { gs.s.br = qn == 0 ? 0 : 12000000; gui_apply(gs.s, true); }
+                if (gs.s.br != 0) {
                     int mb = gs.s.br / 1000000; if (mb < 2) mb = 2;
+                    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(14 * sc, 8 * sc));
                     ImGui::SetNextItemWidth(-1);
                     if (ImGui::SliderInt("##br", &mb, 2, 60, "%d Mbit/s")) gs.s.br = mb * 1000000;
-                    if (ImGui::IsItemDeactivatedAfterEdit()) gui_apply(gs.s, true);
+                    bool done = ImGui::IsItemDeactivatedAfterEdit();
+                    ImGui::PopStyleVar();
+                    if (done) gui_apply(gs.s, true);
                 }
             }
             if (!actual.empty()) {
                 JV av;
-                if (jparse_all(actual, av) && av.t == 'o' && av.num("w") > 0)
-                    ImGui::TextDisabled("Sending %dx%d, %d fps, %.1f Mbit/s", (int)av.num("w"), (int)av.num("h"), (int)av.num("fps"), av.num("br") / 1e6);
+                if (jparse_all(actual, av) && av.t == 'o' && av.num("w") > 0) {
+                    char sb[96];
+                    snprintf(sb, sizeof sb, "Sending %d" MUL "%d" SEP "%d fps" SEP "%.1f Mbit/s", (int)av.num("w"), (int)av.num("h"), (int)av.num("fps"), av.num("br") / 1e6);
+                    TextC(f_small, g_pal.onVar, sb, true);
+                }
             }
         }
+        CardEnd();
 
-        // phone
-        Section("PHONE", sc);
-        {
-            JV pv;
-            if (!pst.empty() && jparse_all(pst, pv) && pv.t == 'o' && pv.get("batt")) {
-                ImGui::Text("Battery %d%%%s", (int)pv.num("batt"), pv.num("plugged") > 0 ? "  (charging)" : "");
-                ImGui::Text("Temperature %.1f C", pv.num("tempC"));
-                if (pv.num("guardStage") > 0) {
-                    std::string gm = pv.str("guard");
-                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.70f, 0.30f, 1));
-                    ImGui::PushTextWrapPos(0); ImGui::TextWrapped("%s", gm.empty() ? "The phone is protecting itself (heat or battery)." : gm.c_str()); ImGui::PopTextWrapPos();
-                    ImGui::PopStyleColor();
-                }
-            } else ImGui::TextDisabled("Not connected");
-        }
-
-        ImGui::Dummy(ImVec2(0, 10 * sc));
-        ImGui::PushTextWrapPos(0);
-        ImGui::TextDisabled("Minimise this window to keep the virtual camera running in the background. Closing it turns the camera off.");
-        ImGui::PopTextWrapPos();
+        TextC(f_small, g_pal.onVar, "Minimise this window to keep the virtual camera running in the background. Closing it turns the camera off.", true);
         ImGui::End();
 
         ImGui::Render();
