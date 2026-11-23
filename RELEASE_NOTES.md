@@ -1,9 +1,4 @@
 ## What’s new
-- Advanced settings are now grouped: Appearance, Streaming, Safety and Updates
-- Wallpaper colors sit with the light / dark choice, and Reset is part of Streaming
-- Changing the theme no longer jumps the screen to the top or opens a drop-down by itself
-- Clearer labels: Resolution, FPS and Bitrate, and a shorter, friendlier “Protect the phone” text
-- Clearer ISO icon in the camera controls
-- Shorter “Camera preview” button
-- Updates now show a “getting the update ready” state before the download bar appears
-- Tapping an open drop-down closes it again
+- ⚡ Drop-downs now un-select instantly, and tapping an open one closes it
+- 📝 The update window shows only what changed in this version
+- ✨ Update notes now come with icons, so they’re quicker to read

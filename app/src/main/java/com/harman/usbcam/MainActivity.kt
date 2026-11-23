@@ -150,8 +150,35 @@ class MainActivity : AppCompatActivity() {
         releaseDropdownFocus()
     }
 
-    /** A tap anywhere outside the focused drop-down un-selects it. */
+    private var swallowTouch = false
+    private val ddDismissAt = LongArray(4)
+
+    /**
+     * Drop-downs: (1) tapping a field whose list is open (or was closed by this very tap) only closes it and is not passed on,
+     * so Material cannot open it again; (2) a tap anywhere outside the focused drop-down un-selects it.
+     */
     override fun dispatchTouchEvent(e: MotionEvent): Boolean {
+        if (swallowTouch) {
+            if (e.actionMasked == MotionEvent.ACTION_UP || e.actionMasked == MotionEvent.ACTION_CANCEL) swallowTouch = false
+            return true
+        }
+        if (e.actionMasked == MotionEvent.ACTION_DOWN && ::ddCam.isInitialized) {
+            val now = SystemClock.uptimeMillis()
+            val dds = arrayOf(ddCam, ddRes, ddFps, ddBr)
+            val boxes = intArrayOf(R.id.til_cam, R.id.til_res, R.id.til_fps, R.id.til_br)
+            for (k in 0 until 4) {
+                val box = findViewById<View>(boxes[k])
+                val r = Rect()
+                if (box.visibility == View.VISIBLE && box.getGlobalVisibleRect(r) && r.contains(e.rawX.toInt(), e.rawY.toInt())) {
+                    if (dds[k].isPopupShowing || now - ddDismissAt[k] < 250) {
+                        dds[k].dismissDropDown()
+                        dds[k].clearFocus()
+                        swallowTouch = true
+                        return true
+                    }
+                }
+            }
+        }
         if (e.actionMasked == MotionEvent.ACTION_DOWN) {
             val f = currentFocus
             if (f is MaterialAutoCompleteTextView) {
@@ -171,7 +198,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Drops focus from drop-downs that are closed. Delayed after a dismiss so the tap that closed the list is not read as "open it again". */
+    /** Drops focus from drop-downs that are closed. Runs right after a list closes. */
     private fun releaseIdleDropdownFocus() {
         if (!::ddCam.isInitialized || isDestroyed) return
         for (d in arrayOf(ddCam, ddRes, ddFps, ddBr)) if (!d.isPopupShowing && d.hasFocus()) d.clearFocus()
@@ -365,7 +392,9 @@ class MainActivity : AppCompatActivity() {
         ddFps.setOnItemClickListener { _, _, pos, _ -> if (pos != fpsIdx) { fpsIdx = pos; changed() } }
         ddBr.setOnItemClickListener { _, _, pos, _ -> if (pos != brIdx) { brIdx = pos; changed() } }
         // after a pick, or when the list is closed without a pick, the field loses its selected state
-        for (d in arrayOf(ddCam, ddRes, ddFps, ddBr)) d.setOnDismissListener { ui.postDelayed({ releaseIdleDropdownFocus() }, 450) }
+        arrayOf(ddCam, ddRes, ddFps, ddBr).forEachIndexed { k, d ->
+            d.setOnDismissListener { ddDismissAt[k] = SystemClock.uptimeMillis(); ui.post { releaseIdleDropdownFocus() } }
+        }
         chipZoomed.setOnClickListener { explain(R.string.chip_zoomed, R.string.chip_zoomed_why) }
         chipUntested.setOnClickListener { explain(R.string.chip_untested, R.string.chip_untested_why) }
 

@@ -12,7 +12,7 @@ android {
         targetSdk = 34
         // set by the GitHub Actions workflow (-PappVersionCode=<run number>) so every build is newer than the one before
         versionCode = (project.findProperty("appVersionCode") as String?)?.toIntOrNull() ?: 6
-        versionName = (project.findProperty("appVersionName") as String?) ?: "0.7"
+        versionName = (project.findProperty("appVersionName") as String?) ?: "0.8"
     }
     // Fixed debug key (checked into the repo, not a secret): every build is signed the same, so updates install over the old app
     // and keep the camera permission. (The first install after this change needs one uninstall; setup.ps1 does it.)

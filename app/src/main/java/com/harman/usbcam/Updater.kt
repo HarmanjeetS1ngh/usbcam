@@ -59,11 +59,16 @@ object Updater {
         }
     }
 
-    /** Release text without markdown marks, bullets as "•". */
-    fun plainNotes(md: String): String = md.replace("\r", "").replace("**", "").lines().joinToString("\n") { l ->
-        val t = l.trim().trimStart('#').trim()
-        if (t.startsWith("- ") || t.startsWith("* ")) "•  " + t.substring(2) else t
-    }.trim()
+    /** Release text for the dialog: headings dropped (the dialog has its own), one paragraph per item, "-" items get a "•" unless they start with an emoji. */
+    fun plainNotes(md: String): String = md.replace("\r", "").replace("**", "").lines()
+        .map { it.trim() }
+        .filter { it.isNotEmpty() && !it.startsWith("#") }
+        .joinToString("\n\n") { t ->
+            if (t.startsWith("- ") || t.startsWith("* ")) {
+                val rest = t.substring(2)
+                if (rest.firstOrNull()?.isLetterOrDigit() == true) "•  " + rest else rest
+            } else t
+        }.trim()
 
     /** Downloads the APK into the cache folder. [cancelled] is polled while downloading. */
     fun download(c: Context, info: Info, onProgress: (Int) -> Unit, cancelled: () -> Boolean): File {
