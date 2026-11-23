@@ -138,3 +138,9 @@ The user prefers direct, honest feedback, and narrow answers over long lists. Te
 - M6g: WB chip icon = 'WB' letters (stroke vector); status-card icon while streaming = animated vector (ic_sensors_live: inner/outer signal waves pulse, infinite, started only when the icon changes). Untested on device.
 - M6h: live icon animation now re-started whenever it is not running (rotation, resume) and status is painted immediately in onCreate.
 - M6i: battery/temperature chips now use a solid colorSurface background with colorOnSurface text/icon (contrast fix in light mode).
+
+## M6j fixes (UI only, NOT COMPILED)
+- Battery/temperature are now plain pills (TextView + icon, not Chips) styled per card state: translucent dark with white text on the live green card, tinted container colour elsewhere.
+- Sharp preset = the largest picture (w*h) the selected camera offers (S22 main lens: 4K, labelled "zoomed in"); Fast = nearest 720p, Balanced = nearest 1080p. Preset match uses the same function.
+- Theme-change bug: after recreate the first focusable view (camera dropdown) took focus, scrolled into view and opened. The scroll content container is now focusable-in-touch-mode so it takes the initial focus instead.
+- Appearance moved to the top of Advanced.

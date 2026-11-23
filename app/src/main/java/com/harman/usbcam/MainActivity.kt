@@ -83,8 +83,8 @@ class MainActivity : AppCompatActivity() {
     private var lastIcon = 0
     private lateinit var statusTitle: TextView
     private lateinit var statusText: TextView
-    private lateinit var chipBattery: Chip
-    private lateinit var chipTemp: Chip
+    private lateinit var chipBattery: TextView
+    private lateinit var chipTemp: TextView
     private lateinit var statusAction: MaterialButton
     private lateinit var swCam: MaterialSwitch
     private lateinit var camSupport: TextView
@@ -300,7 +300,7 @@ class MainActivity : AppCompatActivity() {
             if (checked) {
                 val i = when (id) { R.id.preset_fast -> 0; R.id.preset_balanced -> 1; else -> 2 }
                 UiPrefs.savePreset(this, i)
-                applyPreset(intArrayOf(720, 1080, 1440)[i])
+                applyPreset(i)
             } else presetGroup.post { updateSummary() } // tapping the selected preset again keeps it selected
         }
 
@@ -388,11 +388,25 @@ class MainActivity : AppCompatActivity() {
 
     // ---- presets, summary, pending bar ----
 
-    private fun applyPreset(targetH: Int) {
-        val m = curModes(); if (m.length() == 0) return
+    /** Mode index of a preset: Fast = nearest 720p, Balanced = nearest 1080p, Sharp = the biggest picture the selected camera offers. */
+    private fun presetMode(i: Int): Int {
+        val m = curModes(); if (m.length() == 0) return 0
         var best = 0
-        for (i in 0 until m.length()) if (Math.abs(m.getJSONObject(i).getInt("h") - targetH) < Math.abs(m.getJSONObject(best).getInt("h") - targetH)) best = i
-        modeIdx = best; fillModes()
+        if (i == 2) {
+            for (k in 1 until m.length()) {
+                val a = m.getJSONObject(k); val b = m.getJSONObject(best)
+                if (a.getInt("w") * a.getInt("h") > b.getInt("w") * b.getInt("h")) best = k
+            }
+        } else {
+            val t = if (i == 0) 720 else 1080
+            for (k in 1 until m.length()) if (Math.abs(m.getJSONObject(k).getInt("h") - t) < Math.abs(m.getJSONObject(best).getInt("h") - t)) best = k
+        }
+        return best
+    }
+
+    private fun applyPreset(i: Int) {
+        if (curModes().length() == 0) return
+        modeIdx = presetMode(i); fillModes()
         val f = fpsList(); fpsIdx = f.indexOf(30).let { if (it < 0) 0 else it }; fillFps()
         brIdx = 0; fillBr(); changed()
     }
@@ -405,13 +419,9 @@ class MainActivity : AppCompatActivity() {
         val fps = fpsList().getOrNull(fpsIdx) ?: 30
         val w = m.getInt("w"); val h = m.getInt("h")
         val mb = if (brOptions[brIdx] > 0) brOptions[brIdx] else Caps.bitrate(w, h, fps) / 1_000_000
-        val hs = intArrayOf(720, 1080, 1440)
         val ids = intArrayOf(R.id.preset_fast, R.id.preset_balanced, R.id.preset_sharp)
         val names = intArrayOf(R.string.preset_fast, R.string.preset_balanced, R.string.preset_sharp)
-        val match = BooleanArray(3) { i ->
-            val closest = (0 until curModes().length()).minByOrNull { Math.abs(curModes().getJSONObject(it).getInt("h") - hs[i]) }
-            closest == modeIdx && fps == 30 && brIdx == 0
-        }
+        val match = BooleanArray(3) { i -> presetMode(i) == modeIdx && fps == 30 && brIdx == 0 }
         // Several presets can map to the same size on phones with few sizes: prefer the one the user actually tapped
         val saved = UiPrefs.preset(this)
         val on = if (saved in 0..2 && match[saved]) saved else match.indexOfFirst { it }
@@ -459,6 +469,16 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun stylePill(tv: TextView, iconRes: Int, bg: Int, fg: Int) {
+        val dens = resources.displayMetrics.density
+        tv.setTextColor(fg)
+        tv.background = GradientDrawable().apply { setColor(bg); cornerRadius = 16f * dens }
+        val d = androidx.core.content.ContextCompat.getDrawable(this, iconRes)?.mutate()
+        if (d != null) { val sz = (18 * dens).toInt(); d.setBounds(0, 0, sz, sz) }
+        tv.setCompoundDrawablesRelative(d, null, null, null)
+        tv.compoundDrawableTintList = ColorStateList.valueOf(fg)
+    }
+
     private fun refreshStatus() {
         val s = UsbCamService
         val st = stateNow()
@@ -489,19 +509,14 @@ class MainActivity : AppCompatActivity() {
         if (st.action == 0) statusAction.visibility = View.GONE
         else { statusAction.visibility = View.VISIBLE; statusAction.setText(if (st.action == 1) R.string.st_fix_perm else R.string.st_try_again) }
 
+        // battery / temperature pills follow the card theme: translucent dark on the live green card, tinted container colour elsewhere
+        val isLiveCard = isLive
+        val pillBg = if (isLiveCard) 0x40000000 else ColorUtils.setAlphaComponent(fg, 0x26)
         chipBattery.text = if (s.battLevel >= 0) getString(R.string.chip_battery, s.battLevel) else getString(R.string.chip_battery_unknown)
-        // charging is shown by the bolt icon instead of words; TalkBack still hears it
-        chipBattery.setChipIconResource(if (s.plugged) R.drawable.ic_battery_charging else R.drawable.ic_battery)
         chipBattery.contentDescription = if (s.plugged && s.battLevel >= 0) getString(R.string.chip_battery_charging, s.battLevel) else chipBattery.text
+        stylePill(chipBattery, if (s.plugged) R.drawable.ic_battery_charging else R.drawable.ic_battery, pillBg, fg)
         chipTemp.text = getString(R.string.chip_temp, s.battTemp)
-        // chips sit on a solid theme surface (not on the gradient) so text and icon always have ~15:1 contrast in light, dark and dynamic colours
-        val chipBg = attr(MR.attr.colorSurface); val chipFg = attr(MR.attr.colorOnSurface)
-        for (c in listOf(chipBattery, chipTemp)) {
-            c.chipBackgroundColor = ColorStateList.valueOf(chipBg)
-            c.setTextColor(chipFg)
-            c.chipIconTint = ColorStateList.valueOf(chipFg)
-            c.chipStrokeColor = ColorStateList.valueOf(attr(MR.attr.colorOutlineVariant))
-        }
+        stylePill(chipTemp, R.drawable.ic_thermostat, pillBg, fg)
 
         if (swCam.isChecked != s.camEnabled) { syncing = true; swCam.isChecked = s.camEnabled; syncing = false }
         camSupport.setText(if (s.camEnabled) R.string.camera_on_support else R.string.camera_off_support)

@@ -8,7 +8,8 @@
     <androidx.core.widget.NestedScrollView android:layout_width="match_parent" android:layout_height="match_parent"
         android:fillViewport="true" android:clipToPadding="false" android:paddingBottom="@dimen/fab_clearance"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
-        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="@dimen/space_16">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="@dimen/space_16"
+            android:focusable="true" android:focusableInTouchMode="true" android:defaultFocusHighlightEnabled="false">
             <include layout="@layout/pane_status" />
             <include layout="@layout/pane_settings" />
         </LinearLayout>
