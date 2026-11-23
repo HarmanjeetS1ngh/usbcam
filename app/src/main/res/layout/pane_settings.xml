@@ -131,6 +131,16 @@
                 android:layout_width="wrap_content" android:layout_height="wrap_content"
                 android:layout_marginStart="@dimen/space_16" android:contentDescription="@string/protect_title" />
         </LinearLayout>
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/adv_group_updates"
+            android:layout_marginTop="@dimen/space_24" android:textAppearance="?attr/textAppearanceTitleSmall" android:textColor="?attr/colorPrimary" />
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="56dp"
+            android:orientation="horizontal" android:gravity="center_vertical" android:paddingTop="@dimen/space_8" android:paddingBottom="@dimen/space_8">
+            <TextView android:id="@+id/update_version" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                android:textAppearance="?attr/textAppearanceBodyLarge" android:textColor="?attr/colorOnSurface" />
+            <com.google.android.material.button.MaterialButton android:id="@+id/btn_update" style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="@dimen/space_16"
+                android:minHeight="@dimen/touch_min" android:text="@string/update_check" />
+        </LinearLayout>
         <com.google.android.material.button.MaterialButton android:id="@+id/btn_reset" style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="@dimen/space_8"
             android:minHeight="@dimen/touch_min" android:text="@string/reset_defaults" />

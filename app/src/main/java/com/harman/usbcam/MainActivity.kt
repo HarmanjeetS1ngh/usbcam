@@ -14,6 +14,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
 import android.view.MotionEvent
 import android.view.View
@@ -35,6 +36,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.materialswitch.MaterialSwitch
+import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.google.android.material.snackbar.Snackbar
 import com.google.android.material.textfield.MaterialAutoCompleteTextView
 import org.json.JSONArray
@@ -100,12 +102,16 @@ class MainActivity : AppCompatActivity() {
     private lateinit var swGuard: MaterialSwitch
     private lateinit var swLl: MaterialSwitch
     private lateinit var swDyn: MaterialSwitch
+    private lateinit var btnUpdate: MaterialButton
+    private var checking = false
+    private var pendingUpdate: Updater.Info? = null
 
     private val ui = Handler(Looper.getMainLooper())
     private val tick = object : Runnable { override fun run() { refreshStatus(); ui.postDelayed(this, 1000) } }
 
     companion object {
         @Volatile private var capsCache: JSONObject? = null
+        @Volatile private var lastAutoCheck = 0L
     }
 
     override fun onCreate(b: Bundle?) {
@@ -187,9 +193,18 @@ class MainActivity : AppCompatActivity() {
         startForegroundService(Intent(this, UsbCamService::class.java).setAction(UsbCamService.ACTION_START).putExtras(intent))
     }
 
+    override fun onStart() {
+        super.onStart()
+        // look for a new version whenever the app is opened (at most every 30 minutes)
+        val now = SystemClock.elapsedRealtime()
+        if (lastAutoCheck == 0L || now - lastAutoCheck > 30 * 60 * 1000L) { lastAutoCheck = now; checkForUpdate(false) }
+    }
+
     override fun onResume() {
         super.onResume(); lastIcon = 0; ui.post(tick)
         if (dirty) showPending()
+        val pu = pendingUpdate
+        if (pu != null && Updater.canInstall(this)) { pendingUpdate = null; downloadAndInstall(pu) } // back from the "allow installs" settings page
     }
     override fun onPause() { ui.removeCallbacks(tick); super.onPause() }
 
@@ -270,6 +285,7 @@ class MainActivity : AppCompatActivity() {
         ddCam = findViewById(R.id.dd_cam); ddRes = findViewById(R.id.dd_res); ddFps = findViewById(R.id.dd_fps); ddBr = findViewById(R.id.dd_br)
         chipZoomed = findViewById(R.id.chip_zoomed); chipUntested = findViewById(R.id.chip_untested)
         swGuard = findViewById(R.id.sw_guard); swLl = findViewById(R.id.sw_ll); swDyn = findViewById(R.id.sw_dyn)
+        btnUpdate = findViewById(R.id.btn_update)
     }
 
     private fun expander(header: View, body: View, arrow: ImageView, open: Boolean, onChange: (Boolean) -> Unit) {
@@ -373,6 +389,8 @@ class MainActivity : AppCompatActivity() {
             UiPrefs.saveNightMode(this, m)
             AppCompatDelegate.setDefaultNightMode(m)
         }
+        findViewById<TextView>(R.id.update_version).text = getString(R.string.update_version, Updater.installedName(this), Updater.installedCode(this))
+        btnUpdate.setOnClickListener { checkForUpdate(true) }
         findViewById<View>(R.id.btn_reset).setOnClickListener {
             val p = Prefs(this); p.cam = ""; p.w = 0; p.h = 0; p.fps = 0; p.br = 0
             restoreSelection(); fillCam(); fillModes(); fillFps(); fillBr(); changed()
@@ -384,6 +402,77 @@ class MainActivity : AppCompatActivity() {
 
     private fun explain(titleRes: Int, bodyRes: Int) {
         MaterialAlertDialogBuilder(this).setTitle(titleRes).setMessage(bodyRes).setPositiveButton(R.string.ok, null).show()
+    }
+
+    // ---- app updates (GitHub Releases) ----
+
+    private fun checkForUpdate(manual: Boolean) {
+        if (checking) return
+        checking = true
+        if (manual) { btnUpdate.isEnabled = false; btnUpdate.setText(R.string.update_checking) }
+        Thread {
+            var failed = false
+            val found: Updater.Info? = try { Updater.fetchLatest() } catch (_: Exception) { failed = true; null }
+            val isFailed = failed
+            runOnUiThread {
+                checking = false
+                if (isDestroyed || isFinishing) return@runOnUiThread
+                btnUpdate.isEnabled = true
+                btnUpdate.setText(R.string.update_check)
+                if (found != null && found.code > Updater.installedCode(this)) showUpdateDialog(found)
+                else if (manual) Snackbar.make(coord, if (isFailed) R.string.update_failed else R.string.update_uptodate, Snackbar.LENGTH_LONG).setAnchorView(fab).show()
+            }
+        }.start()
+    }
+
+    private fun showUpdateDialog(info: Updater.Info) {
+        val notes = Updater.plainNotes(info.notes).ifEmpty { getString(R.string.update_no_notes) }
+        val have = getString(R.string.update_version, Updater.installedName(this), Updater.installedCode(this))
+        MaterialAlertDialogBuilder(this).setTitle(R.string.update_title)
+            .setMessage(getString(R.string.update_msg, info.name, have, notes))
+            .setPositiveButton(R.string.update_now) { _, _ -> startUpdate(info) }
+            .setNegativeButton(R.string.update_later, null).show()
+    }
+
+    private fun startUpdate(info: Updater.Info) {
+        if (!Updater.canInstall(this)) {
+            pendingUpdate = info
+            MaterialAlertDialogBuilder(this).setTitle(R.string.update_perm_title).setMessage(R.string.update_perm_msg)
+                .setPositiveButton(R.string.update_open_settings) { _, _ ->
+                    startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + packageName)))
+                }
+                .setNegativeButton(R.string.update_later) { _, _ -> pendingUpdate = null }.show()
+            return
+        }
+        downloadAndInstall(info)
+    }
+
+    private fun downloadAndInstall(info: Updater.Info) {
+        val v = layoutInflater.inflate(R.layout.dialog_update_progress, null)
+        val bar = v.findViewById<LinearProgressIndicator>(R.id.update_bar)
+        val pct = v.findViewById<TextView>(R.id.update_pct)
+        pct.text = getString(R.string.update_pct, 0)
+        val cancel = java.util.concurrent.atomic.AtomicBoolean(false)
+        val dlg = MaterialAlertDialogBuilder(this).setTitle(R.string.update_downloading).setView(v).setCancelable(false)
+            .setNegativeButton(R.string.update_cancel) { _, _ -> cancel.set(true) }.show()
+        val app = applicationContext
+        Thread {
+            var file: java.io.File? = null
+            try {
+                file = Updater.download(app, info, { p ->
+                    runOnUiThread { if (!isDestroyed) { bar.setProgressCompat(p, true); pct.text = getString(R.string.update_pct, p) } }
+                }, { cancel.get() })
+            } catch (_: Exception) { }
+            val done = file
+            runOnUiThread {
+                if (!isDestroyed) dlg.dismiss()
+                if (done != null) {
+                    try { Updater.install(app, done) } catch (_: Exception) { }
+                } else if (!isDestroyed && !cancel.get()) {
+                    Snackbar.make(coord, R.string.update_dl_failed, Snackbar.LENGTH_LONG).setAnchorView(fab).show()
+                }
+            }
+        }.start()
     }
 
     // ---- dropdowns ----

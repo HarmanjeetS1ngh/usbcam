@@ -10,8 +10,9 @@ android {
         applicationId = "com.harman.usbcam"
         minSdk = 26
         targetSdk = 34
-        versionCode = 5
-        versionName = "0.5-m5"
+        // set by the GitHub Actions workflow (-PappVersionCode=<run number>) so every build is newer than the one before
+        versionCode = (project.findProperty("appVersionCode") as String?)?.toIntOrNull() ?: 6
+        versionName = (project.findProperty("appVersionName") as String?) ?: "0.6"
     }
     // Fixed debug key (checked into the repo, not a secret): every build is signed the same, so updates install over the old app
     // and keep the camera permission. (The first install after this change needs one uninstall; setup.ps1 does it.)

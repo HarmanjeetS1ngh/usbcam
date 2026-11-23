@@ -157,3 +157,10 @@ The user prefers direct, honest feedback, and narrow answers over long lists. Te
 - Advanced regrouped: Appearance (theme buttons + wallpaper colours) / Streaming (fastest response, bitrate) / Safety (protect the phone) / reset. Same view ids, no Kotlin change.
 - Protect the phone text shortened.
 - M6m: FAB label 'Open camera preview' -> 'Camera preview' (string only).
+
+## M7 in-app updates from GitHub Releases (UI/app only, NOT COMPILED)
+- Workflow build.yml: builds with -PappVersionCode=<run number> (versionName from gradle.properties `appVersionName`), then publishes release `build-<run number>` with usbcam.apk and RELEASE_NOTES.md as notes (continue-on-error; permissions contents: write). Edit RELEASE_NOTES.md (and appVersionName) before each push: it is the "What's new" the app shows.
+- Updater.kt: lists releases of HarmanjeetS1ngh/usbcam (public API, no token), newest `build-N` with an .apk asset, compares N with installed versionCode, downloads to cache/updates, installs through FileProvider (authority ${applicationId}.updates, res/xml/update_paths.xml) -> Android's own confirm screen. Needs REQUEST_INSTALL_PACKAGES + the one-time "allow from this source" setting (the app sends the user there and continues on return).
+- MainActivity: auto-check in onStart (max every 30 min, silent on errors), dialog with version + notes + Update/Later, progress dialog with Cancel; Advanced > Updates row shows "Version x (build n)" + "Check for updates" (Snackbar: up to date / couldn't check).
+- Only builds made by Actions after this change have run-number versionCodes; the installed 0.5 (versionCode 5) updates normally. Every push now creates a release.
+- Untested: everything on device (download redirect, installer hand-off, unknown-sources flow, rotation during download: download finishes and installer opens, progress dialog is lost).
