@@ -197,6 +197,7 @@ static void commit_selection(GuiState& g) {
 #define MUL "\xC3\x97"
 #define DEG "\xC2\xB0"
 #include "usbcam_icon.h"
+#include "usbcam_lucide.h"
 
 // Every text/background pair below is >= 4.5:1 and every control outline >= 3:1 (WCAG AA), in both themes.
 struct Pal {
@@ -397,35 +398,11 @@ static void Overlay(ImDrawList* dl, ImVec2 pos, const char* t) {
     dl->AddRectFilled(pos, ImVec2(pos.x + ts.x + px * 2.0f, pos.y + h), IM_COL32(0, 0, 0, 185), h * 0.5f);
     DText(dl, f_small, ImVec2(pos.x + px, pos.y + 5.0f * g_sc), IM_COL32(255, 255, 255, 255), t);
 }
-// theme toggle glyph: sun (shown in dark theme) or moon (shown in light theme)
-static void ThemeGlyph(ImDrawList* dl, ImVec2 c, bool toLight, ImU32 col, ImU32 bg) {
-    const float sc = g_sc;
-    if (toLight) {   // sun
-        dl->AddCircleFilled(c, 4.5f * sc, col, 20);
-        for (int i = 0; i < 8; i++) {
-            float a = (float)i * 0.785398f, ca = cosf(a), sa = sinf(a);
-            dl->AddLine(ImVec2(c.x + ca * 7.0f * sc, c.y + sa * 7.0f * sc), ImVec2(c.x + ca * 9.5f * sc, c.y + sa * 9.5f * sc), col, 1.8f * sc);
-        }
-    } else {         // moon
-        dl->AddCircleFilled(c, 7.5f * sc, col, 24);
-        dl->AddCircleFilled(ImVec2(c.x + 4.0f * sc, c.y - 3.5f * sc), 6.5f * sc, bg, 24);
-    }
-}
-
-// stage glyphs (line icons): a phone, and a video camera with a slash (preview off)
-static void GlyphPhone(ImDrawList* dl, ImVec2 c, float sz, ImU32 col) {
-    float w = sz * 0.52f, h = sz, t = std::max(2.0f, sz * 0.06f);
-    dl->AddRect(ImVec2(c.x - w * 0.5f, c.y - h * 0.5f), ImVec2(c.x + w * 0.5f, c.y + h * 0.5f), col, w * 0.18f, 0, t);
-    dl->AddLine(ImVec2(c.x - w * 0.16f, c.y + h * 0.36f), ImVec2(c.x + w * 0.16f, c.y + h * 0.36f), col, t);
-    dl->AddLine(ImVec2(c.x - w * 0.12f, c.y - h * 0.38f), ImVec2(c.x + w * 0.12f, c.y - h * 0.38f), col, t);
-}
-static void GlyphCamOff(ImDrawList* dl, ImVec2 c, float sz, ImU32 col) {
-    float t = std::max(2.0f, sz * 0.06f), bw = sz * 0.66f, bh = sz * 0.5f;
-    float x0 = c.x - sz * 0.5f, y0 = c.y - bh * 0.5f;
-    dl->AddRect(ImVec2(x0, y0), ImVec2(x0 + bw, y0 + bh), col, sz * 0.1f, 0, t);
-    ImVec2 tri[4] = { ImVec2(x0 + bw + sz * 0.04f, c.y - sz * 0.07f), ImVec2(c.x + sz * 0.5f, c.y - bh * 0.4f), ImVec2(c.x + sz * 0.5f, c.y + bh * 0.4f), ImVec2(x0 + bw + sz * 0.04f, c.y + sz * 0.07f) };
-    dl->AddPolyline(tri, 4, col, ImDrawFlags_Closed, t);
-    dl->AddLine(ImVec2(c.x - sz * 0.5f, c.y - sz * 0.42f), ImVec2(c.x + sz * 0.5f, c.y + sz * 0.42f), col, t * 1.4f);
+// Lucide icon, tinted: centre c, size sz
+static SDL_Texture* g_ic[IC_N];
+static void Ico(ImDrawList* dl, int i, ImVec2 c, float sz, ImU32 col) {
+    if (i < 0 || i >= IC_N || !g_ic[i]) return;
+    dl->AddImage((ImTextureID)g_ic[i], ImVec2(c.x - sz * 0.5f, c.y - sz * 0.5f), ImVec2(c.x + sz * 0.5f, c.y + sz * 0.5f), ImVec2(0, 0), ImVec2(1, 1), col);
 }
 
 template <class F> static auto imrender(F f, ImDrawData* d, SDL_Renderer* r, int) -> decltype(f(d, r), void()) { f(d, r); }
@@ -494,6 +471,12 @@ static void gui_loop() {
     SDL_Renderer* ren = win ? SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC) : nullptr;
     if (win && !ren) ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_SOFTWARE);
     if (!win || !ren) { ulog("[error] window failed: %s", SDL_GetError()); return; }
+    for (int i = 0; i < IC_N; i++) {   // Lucide icons as white textures; the colour is applied when drawing
+        static unsigned char px[IC_SZ * IC_SZ * 4];
+        for (int k = 0; k < IC_SZ * IC_SZ; k++) { px[k * 4] = px[k * 4 + 1] = px[k * 4 + 2] = 255; px[k * 4 + 3] = g_ic_a[i][k]; }
+        g_ic[i] = SDL_CreateTexture(ren, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, IC_SZ, IC_SZ);
+        if (g_ic[i]) { SDL_UpdateTexture(g_ic[i], nullptr, px, IC_SZ * 4); SDL_SetTextureBlendMode(g_ic[i], SDL_BLENDMODE_BLEND); }
+    }
     auto set_min = [&](float s2) {   // minimum window size, never larger than the screen
         SDL_Rect db; int mw = (int)(860 * s2), mh = (int)(540 * s2);
         if (SDL_GetDisplayBounds(0, &db) == 0) { mw = std::min(mw, db.w); mh = std::min(mh, db.h); }
@@ -629,8 +612,7 @@ static void gui_loop() {
             {
                 ImVec4 gc = g_pal.onVar;
                 if (!live && kind == 3) gc = g_pal.err; else if (!live && kind == 2) gc = g_pal.warn; else if (live) gc = g_pal.ok;
-                if (live) GlyphCamOff(bg, ImVec2(cx, y + isz * 0.5f), isz * 0.9f, Cu(gc));
-                else GlyphPhone(bg, ImVec2(cx, y + isz * 0.5f), isz * 0.9f, Cu(gc));
+                Ico(bg, live ? IC_VIDOFF : (kind == 3 ? IC_ALERT : IC_PHONE), ImVec2(cx, y + isz * 0.5f), isz, Cu(gc));
             }
             y += isz + gap;
             DText(bg, f_head, ImVec2(cx - t1.x * 0.5f, y), Cu(g_pal.onSurf), ttl.c_str(), bw);
@@ -664,7 +646,7 @@ static void gui_loop() {
                 ImVec4 fill = (hv && en) ? Mix(g_pal.secC, g_pal.onSecC, 0.10f) : g_pal.secC;
                 ImVec2 ctr(pp.x + bs * 0.5f, pp.y + bs * 0.5f);
                 dl->AddCircleFilled(ctr, bs * 0.5f, Cu(fill), 32);
-                if (glyph) ThemeGlyph(dl, ctr, !gs.s.light, Cu(g_pal.onSecC), Cu(fill));
+                if (glyph) Ico(dl, gs.s.light ? IC_MOON : IC_SUN, ctr, 22 * sc, Cu(g_pal.onSecC));
                 else { ImVec2 ts = TSize(f_label, txt); DText(dl, f_label, ImVec2(ctr.x - ts.x * 0.5f, ctr.y - ts.y * 0.5f), Cu(en ? g_pal.onSecC : g_pal.outl), txt); }
                 FocusRing(dl, pp, ImVec2(pp.x + bs, pp.y + bs), bs * 0.5f);
                 return pr && en;
@@ -846,6 +828,7 @@ static void gui_loop() {
     ImGui_ImplSDL2_Shutdown();
     ImGui::DestroyContext();
     if (tex) SDL_DestroyTexture(tex);
+    for (int i = 0; i < IC_N; i++) if (g_ic[i]) SDL_DestroyTexture(g_ic[i]);
     av_frame_free(&show);
     SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); SDL_Quit();
 }

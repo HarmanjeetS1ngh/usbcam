@@ -239,3 +239,6 @@ UNTESTED: real Windows build (esp. enable_language(RC) + usbcam.rc under the VS 
 
 ## M12e icon only for the exe/window; header removed; logical stage icons (usbcam_gui.inc only) - NOT BUILT ON WINDOWS
 M12d was confirmed running on the user's PC (screenshot). Changes: removed the logo + "UsbCam" name from the app bar (the title bar already has the icon; app icon now only = exe/shortcut/taskbar/window via usbcam.ico + SDL_SetWindowIcon). Status chip moved to the left of the bar, A-/A+/theme stay right; bar 52dp. Stage glyphs are drawn line icons: phone (not live; red/amber/grey by state) and a video camera with a slash (live, preview off). The 64x64 header texture was removed. Note: build-vcam.ps1 does not stop a running UsbCam.exe - close the app before rebuilding.
+
+## M12f Lucide icons (usbcam_gui.inc, new usbcam_lucide.h + LUCIDE-LICENSE.txt)
+Stage icons and the theme button now use Lucide (ISC): smartphone (waiting/idle), triangle-exclamation-point (error), video-off (live, preview off), sun/moon (theme). Rasterised once to 96x96 alpha masks in usbcam_lucide.h, uploaded as white SDL textures and tinted at draw time (Ico()). The hand-drawn glyph code was removed. To add an icon: rasterise its SVG from lucide.dev the same way and extend IC_N/enum. Rendered here only; not built on Windows.
