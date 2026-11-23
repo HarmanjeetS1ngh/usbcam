@@ -16,4 +16,12 @@ object UiPrefs {
 
     fun isHintSeen(c: Context): Boolean = sp(c).getBoolean("hint_focus", false)
     fun markHintSeen(c: Context) { sp(c).edit().putBoolean("hint_focus", true).apply() }
+
+    /** Master camera switch, remembered so it stays off even when the PC tools relaunch the app. */
+    fun isCamOn(c: Context): Boolean = sp(c).getBoolean("cam_on", true)
+    fun saveCamOn(c: Context, on: Boolean) { sp(c).edit().putBoolean("cam_on", on).apply() }
+
+    /** Last quality preset the user tapped: 0 Fast, 1 Balanced, 2 Sharp, -1 none. */
+    fun preset(c: Context): Int = sp(c).getInt("preset", -1)
+    fun savePreset(c: Context, i: Int) { sp(c).edit().putInt("preset", i).apply() }
 }

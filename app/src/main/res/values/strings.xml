@@ -35,8 +35,8 @@
     <!-- camera switch -->
     <string name="camera_switch_title">Camera</string>
     <string name="camera_switch_cd">Camera on or off</string>
-    <string name="camera_on_support">On: ready to stream to your PC</string>
-    <string name="camera_off_support">Off: other apps can use the camera</string>
+    <string name="camera_on_support">On: your PC can start streaming</string>
+    <string name="camera_off_support">Off: streaming is stopped and the PC cannot start it</string>
 
     <!-- quality -->
     <string name="section_quality">Quality</string>

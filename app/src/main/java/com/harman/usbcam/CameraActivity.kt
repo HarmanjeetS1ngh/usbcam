@@ -76,6 +76,7 @@ class CameraActivity : AppCompatActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         @Suppress("DEPRECATION")
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        UiPrefs.saveCamOn(this, true) // opening the preview turns the camera back on (service does the same)
         startForegroundService(Intent(this, UsbCamService::class.java).setAction(UsbCamService.ACTION_PREVIEW))
         setContentView(R.layout.activity_camera)
         bind()
@@ -236,7 +237,11 @@ class CameraActivity : AppCompatActivity() {
         when (sel) {
             "ISO" -> { if (!c.manualOk) { noManual(); return }; seedManual(c); c.iso = fromLog(p, c.isoMin.toDouble(), c.isoMax.toDouble()).roundToInt() }
             "SPEED" -> { if (!c.manualOk) { noManual(); return }; seedManual(c); c.expNs = fromLog(p, expLo(c), expHi(c)).toLong() }
-            "EV" -> c.ev = c.evMin + p
+            "EV" -> {
+                // Brightness only works with automatic exposure: leave manual ISO/shutter and release the exposure lock
+                c.manualExp = false; c.aeLock = false
+                c.ev = c.evMin + p
+            }
             "FOCUS" -> { if (c.minFocus <= 0f) { Toast.makeText(this, R.string.toast_fixed_focus, Toast.LENGTH_SHORT).show(); return }
                 c.chooseFocus(CamControls.FM_MANUAL); c.focusDist = c.minFocus * (1f - p / 100f) }
         }
@@ -295,6 +300,13 @@ class CameraActivity : AppCompatActivity() {
 
     private fun putText(tv: TextView, t: String) { if (tv.text.toString() != t) tv.text = t }
 
+    /** Chip shows icon + value only; the full "Brightness +0.3" text is the spoken description. */
+    private fun putChip(c: Chip, value: String, descRes: Int) {
+        putText(c, value)
+        val d = getString(descRes, value)
+        if (c.contentDescription?.toString() != d) c.contentDescription = d
+    }
+
     private fun update() {
         val s = UsbCamService.instance
         val c = s?.controls
@@ -310,11 +322,11 @@ class CameraActivity : AppCompatActivity() {
         if (!c.locked && c.point == null && ring.visibility == View.VISIBLE) ring.visibility = View.GONE
         if (panel.visibility != View.VISIBLE) return
         val isoV = if (c.manualExp) "${c.iso}" else autoWord() + " ${c.liveIso}"
-        putText(chips["ISO"]!!, getString(R.string.pro_iso, isoV))
-        putText(chips["SPEED"]!!, getString(R.string.pro_speed, fmtExp(if (c.manualExp) c.expNs else c.liveExpNs)))
-        putText(chips["EV"]!!, getString(R.string.pro_ev, fmtEv(c)))
-        putText(chips["FOCUS"]!!, getString(R.string.pro_focus, focusName(c)))
-        putText(chips["WB"]!!, getString(R.string.pro_wb, if (c.awbLock) getString(R.string.val_locked) else autoWord()))
+        putChip(chips["ISO"]!!, isoV, R.string.pro_iso)
+        putChip(chips["SPEED"]!!, fmtExp(if (c.manualExp) c.expNs else c.liveExpNs), R.string.pro_speed)
+        putChip(chips["EV"]!!, fmtEv(c), R.string.pro_ev)
+        putChip(chips["FOCUS"]!!, focusName(c), R.string.pro_focus)
+        putChip(chips["WB"]!!, if (c.awbLock) getString(R.string.val_locked) else autoWord(), R.string.pro_wb)
         val manual = when (sel) { "ISO", "SPEED" -> c.manualExp; "EV" -> c.ev != 0; "FOCUS" -> c.fm != CamControls.FM_AUTO; else -> c.awbLock }
         autoBtn.setText(if (sel == "WB") (if (c.awbLock) R.string.btn_unlock_wb else R.string.btn_lock_wb) else R.string.btn_auto)
         autoBtn.isChecked = if (sel == "WB") c.awbLock else !manual

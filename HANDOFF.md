@@ -129,3 +129,9 @@ The user prefers direct, honest feedback, and narrow answers over long lists. Te
 - M6c: charging shown as bolt battery icon on the status-card chip (no 'charging' text; TalkBack description keeps it).
 - M6d: status card background = diagonal gradient (state colour -> 20% accent tint) via GradientDrawable on the card content; card colour transparent. Untested visually.
 - M6e: while streaming (st_streaming) the status card uses a fixed green gradient (live_start/live_end, white text; separate dark values), ignoring dynamic colours.
+
+## M6f fixes (UI only, WRITTEN, NOT COMPILED)
+- Quality pills: selected segment now primaryContainer + check icon (res/color/seg_bg, seg_text, Ui.markSegments). Root cause of "no selection" on phones with few sizes (e.g. S22: 1080p is both Balanced and Sharp): the old matcher always picked the last match. Now the tapped preset is remembered (UiPrefs.preset) and shown while the settings still match.
+- Camera PRO chips: icon + value only (ISO, shutter, brightness, focus, white balance); full text kept as TalkBack description.
+- Brightness (EV): CamControls/Streamer unchanged. EV is ignored by the camera when AE is OFF (manual ISO/shutter) or AE_LOCK is on, so moving the Brightness slider now switches back to automatic exposure and releases the AE lock first. Not verified on device.
+- Quit button removed (it could not work: viewer/OBS/tray relaunch the app with `am start`, and the in-memory camEnabled reset to true). The Camera switch is now the single master on/off and is persisted (UiPrefs.isCamOn): when it is off and the app is relaunched, MainActivity sends ACTION_START without extras (control channel up, no stream) then ACTION_CAM_OFF. Opening the camera preview turns it on again (as before). The service notification Stop button still exists (service untouched).

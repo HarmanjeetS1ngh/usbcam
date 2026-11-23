@@ -148,6 +148,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun launch() {
+        if (!UiPrefs.isCamOn(this)) {
+            // The camera switch was left off: keep it off even though the PC tools relaunched the app (no stream extras are forwarded).
+            startForegroundService(Intent(this, UsbCamService::class.java).setAction(UsbCamService.ACTION_START))
+            startForegroundService(Intent(this, UsbCamService::class.java).setAction(UsbCamService.ACTION_CAM_OFF))
+            return
+        }
         startForegroundService(Intent(this, UsbCamService::class.java).setAction(UsbCamService.ACTION_START).putExtras(intent))
     }
 
@@ -267,8 +273,9 @@ class MainActivity : AppCompatActivity() {
         fab.setOnClickListener { startActivity(Intent(this, CameraActivity::class.java)) }
 
         // camera on/off
-        swCam.isChecked = UsbCamService.camEnabled
+        swCam.isChecked = UiPrefs.isCamOn(this)
         swCam.setOnCheckedChangeListener { _, on ->
+            if (!syncing) UiPrefs.saveCamOn(this, on)
             if (!syncing) startForegroundService(Intent(this, UsbCamService::class.java)
                 .setAction(if (on) UsbCamService.ACTION_CAM_ON else UsbCamService.ACTION_CAM_OFF))
         }
@@ -285,10 +292,14 @@ class MainActivity : AppCompatActivity() {
         }
 
         // presets
-        presetGroup.addOnButtonCheckedListener { _, id, checked ->
+        presetGroup.addOnButtonCheckedListener { g, id, checked ->
             if (syncing) return@addOnButtonCheckedListener
-            if (checked) applyPreset(when (id) { R.id.preset_fast -> 720; R.id.preset_balanced -> 1080; else -> 1440 })
-            else presetGroup.post { updateSummary() } // tapping the selected preset again keeps it selected
+            Ui.markSegments(g)
+            if (checked) {
+                val i = when (id) { R.id.preset_fast -> 0; R.id.preset_balanced -> 1; else -> 2 }
+                UiPrefs.savePreset(this, i)
+                applyPreset(intArrayOf(720, 1080, 1440)[i])
+            } else presetGroup.post { updateSummary() } // tapping the selected preset again keeps it selected
         }
 
         // dropdowns
@@ -322,7 +333,9 @@ class MainActivity : AppCompatActivity() {
 
         val themeGroup = findViewById<MaterialButtonToggleGroup>(R.id.theme_group)
         themeGroup.check(when (UiPrefs.nightMode(this)) { AppCompatDelegate.MODE_NIGHT_NO -> R.id.theme_light; AppCompatDelegate.MODE_NIGHT_YES -> R.id.theme_dark; else -> R.id.theme_system })
-        themeGroup.addOnButtonCheckedListener { _, id, checked ->
+        Ui.markSegments(themeGroup)
+        themeGroup.addOnButtonCheckedListener { g, id, checked ->
+            Ui.markSegments(g)
             if (!checked) return@addOnButtonCheckedListener
             val m = when (id) { R.id.theme_light -> AppCompatDelegate.MODE_NIGHT_NO; R.id.theme_dark -> AppCompatDelegate.MODE_NIGHT_YES; else -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM }
             UiPrefs.saveNightMode(this, m)
@@ -335,16 +348,6 @@ class MainActivity : AppCompatActivity() {
 
         expander(findViewById(R.id.adv_header), findViewById(R.id.adv_body), findViewById(R.id.adv_arrow), advOpen) { advOpen = it }
         expander(findViewById(R.id.pic_header), findViewById(R.id.pic_body), findViewById(R.id.pic_arrow), picOpen) { picOpen = it }
-
-        // quit with confirmation
-        findViewById<View>(R.id.btn_quit).setOnClickListener {
-            val d = MaterialAlertDialogBuilder(this).setTitle(R.string.quit_title).setMessage(R.string.quit_message)
-                .setNegativeButton(R.string.cancel, null)
-                .setPositiveButton(R.string.quit) { _, _ ->
-                    startService(Intent(this, UsbCamService::class.java).setAction(UsbCamService.ACTION_QUIT))
-                }.show()
-            d.getButton(DialogInterface.BUTTON_POSITIVE).setTextColor(MaterialColors.getColor(this, MR.attr.colorError, 0))
-        }
     }
 
     private fun explain(titleRes: Int, bodyRes: Int) {
@@ -403,14 +406,17 @@ class MainActivity : AppCompatActivity() {
         val hs = intArrayOf(720, 1080, 1440)
         val ids = intArrayOf(R.id.preset_fast, R.id.preset_balanced, R.id.preset_sharp)
         val names = intArrayOf(R.string.preset_fast, R.string.preset_balanced, R.string.preset_sharp)
-        var on = -1
-        for (i in hs.indices) {
+        val match = BooleanArray(3) { i ->
             val closest = (0 until curModes().length()).minByOrNull { Math.abs(curModes().getJSONObject(it).getInt("h") - hs[i]) }
-            if (closest == modeIdx && fps == 30 && brIdx == 0) on = i
+            closest == modeIdx && fps == 30 && brIdx == 0
         }
+        // Several presets can map to the same size on phones with few sizes: prefer the one the user actually tapped
+        val saved = UiPrefs.preset(this)
+        val on = if (saved in 0..2 && match[saved]) saved else match.indexOfFirst { it }
         syncing = true
         if (on >= 0) presetGroup.check(ids[on]) else presetGroup.clearChecked()
         syncing = false
+        Ui.markSegments(presetGroup)
         summaryTv.text = getString(R.string.summary_fmt, getString(if (on >= 0) names[on] else R.string.preset_custom), w, h, fps, mb)
     }
 
