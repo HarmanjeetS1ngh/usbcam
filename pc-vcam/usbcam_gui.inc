@@ -63,7 +63,8 @@ static bool jparse_all(const std::string& txt, JV& v) { const char* p = txt.c_st
 
 // ---------- saved settings (%APPDATA%\UsbCam\app.ini) ----------
 struct GuiSettings {
-    bool vcam = true, mirror = false, phone_default = true, light = false;
+    bool vcam = true, mirror = false, phone_default = true, light = false, preview = true;
+    int tsz = 0;   // text size level 0..3 = 100/125/150/200 %
     std::string cam; int w = 0, h = 0, fps = 0, br = 0;   // br in bit/s, 0 = automatic
 };
 static std::string settings_path() {
@@ -86,6 +87,8 @@ static void settings_load(GuiSettings& s) {
         else if (k == "mirror") s.mirror = v == "1";
         else if (k == "phone_default") s.phone_default = v == "1";
         else if (k == "light") s.light = v == "1";
+        else if (k == "preview") s.preview = v != "0";
+        else if (k == "tsz") s.tsz = std::max(0, std::min(3, atoi(v.c_str())));
         else if (k == "cam") s.cam = v;
         else if (k == "w") s.w = atoi(v.c_str());
         else if (k == "h") s.h = atoi(v.c_str());
@@ -97,8 +100,8 @@ static void settings_load(GuiSettings& s) {
 static void settings_save(const GuiSettings& s) {
     FILE* f = fopen(settings_path().c_str(), "w");
     if (!f) return;
-    fprintf(f, "vcam=%d\nmirror=%d\nphone_default=%d\nlight=%d\ncam=%s\nw=%d\nh=%d\nfps=%d\nbr=%d\n",
-            s.vcam ? 1 : 0, s.mirror ? 1 : 0, s.phone_default ? 1 : 0, s.light ? 1 : 0, s.cam.c_str(), s.w, s.h, s.fps, s.br);
+    fprintf(f, "vcam=%d\nmirror=%d\nphone_default=%d\nlight=%d\npreview=%d\ntsz=%d\ncam=%s\nw=%d\nh=%d\nfps=%d\nbr=%d\n",
+            s.vcam ? 1 : 0, s.mirror ? 1 : 0, s.phone_default ? 1 : 0, s.light ? 1 : 0, s.preview ? 1 : 0, s.tsz, s.cam.c_str(), s.w, s.h, s.fps, s.br);
     fclose(f);
 }
 
@@ -284,7 +287,7 @@ static void CardEnd() {
 
 // M3 switch, compact: 44x24dp track; the thumb grows and shows a check when on
 static bool Switch(const char* id, bool* v) {
-    const float sc = g_sc, w = 44.0f * sc, h = 24.0f * sc;
+    const float sc = g_sc, w = 48.0f * sc, h = 28.0f * sc;
     ImVec2 p = ImGui::GetCursorScreenPos();
     bool ch = false;
     if (ImGui::InvisibleButton(id, ImVec2(w, h))) { *v = !*v; ch = true; }
@@ -301,8 +304,8 @@ static bool Switch(const char* id, bool* v) {
         ImVec4 o = g_pal.outl; o.w = 1.0f - t;
         dl->AddRect(ImVec2(p.x + sc, p.y + sc), ImVec2(p.x + w - sc, p.y + h - sc), Cu(o), h * 0.5f, 0, 2.0f * sc);
     }
-    float cx = p.x + 12.0f * sc + (w - 24.0f * sc) * t, cy = p.y + h * 0.5f;
-    dl->AddCircleFilled(ImVec2(cx, cy), (7.0f + 3.0f * t) * sc, Cu(Mix(g_pal.outl, g_pal.onPri, t)), 24);
+    float cx = p.x + 14.0f * sc + (w - 28.0f * sc) * t, cy = p.y + h * 0.5f;
+    dl->AddCircleFilled(ImVec2(cx, cy), (8.0f + 3.0f * t) * sc, Cu(Mix(g_pal.outl, g_pal.onPri, t)), 24);
     if (t > 0.5f) {
         ImVec4 k = g_pal.pri; k.w = (t - 0.5f) * 2.0f;
         ImVec2 pts[3] = { ImVec2(cx - 3.5f * sc, cy), ImVec2(cx - 1.0f * sc, cy + 2.5f * sc), ImVec2(cx + 3.5f * sc, cy - 2.5f * sc) };
@@ -313,7 +316,7 @@ static bool Switch(const char* id, bool* v) {
 }
 // list row: label on the left, switch on the right
 static bool SwitchRow(const char* id, const char* label, bool* v, bool title) {
-    const float h = 24.0f * g_sc;
+    const float h = 28.0f * g_sc;
     float avail = ImGui::GetContentRegionAvail().x;
     ImVec2 p = ImGui::GetCursorScreenPos();
     ImFont* f = title ? f_title : f_body;
@@ -322,12 +325,12 @@ static bool SwitchRow(const char* id, const char* label, bool* v, bool title) {
     ImGui::SetCursorScreenPos(ImVec2(p.x, p.y + (h - th) * 0.5f));
     ImGui::TextUnformatted(label);
     ImGui::PopFont();
-    ImGui::SetCursorScreenPos(ImVec2(p.x + avail - 44.0f * g_sc, p.y));
+    ImGui::SetCursorScreenPos(ImVec2(p.x + avail - 48.0f * g_sc, p.y));
     return Switch(id, v);
 }
 // M3 segmented button (32dp); returns the (possibly new) selected index
 static int Segmented(const char* id, const char* const* lab, int n, int sel) {
-    const float sc = g_sc, h = 32.0f * sc;
+    const float sc = g_sc, h = 36.0f * sc;
     float w = ImGui::GetContentRegionAvail().x, sw = w / (float)n;
     ImVec2 p = ImGui::GetCursorScreenPos();
     ImDrawList* dl = ImGui::GetWindowDrawList();
@@ -366,7 +369,7 @@ static int Segmented(const char* id, const char* const* lab, int n, int sel) {
 }
 // status chip (28dp pill with a dot and a label), drawn at a screen position, right edge at xr; returns nothing
 static void ChipAt(ImDrawList* dl, float xr, float cy, const char* t, const ImVec4& bg, const ImVec4& fg, const ImVec4& dot) {
-    const float sc = g_sc, h = 28.0f * sc, px = 12.0f * sc, r = 4.5f * sc;
+    const float sc = g_sc, h = 32.0f * sc, px = 12.0f * sc, r = 5.0f * sc;
     ImVec2 ts = TSize(f_label, t);
     float w = px + r * 2.0f + 8.0f * sc + ts.x + px;
     float x = xr - w, y = cy - h * 0.5f;
@@ -430,19 +433,59 @@ static int status_view(bool live, std::string& title) {
 }
 
 // ---------- the window ----------
+// (re)builds fonts and style for a given total scale (display DPI x text-size level)
+static void build_ui(float sc) {
+    g_sc = sc;
+    ImGuiIO& io = ImGui::GetIO();
+    io.Fonts->Clear();
+    io.FontGlobalScale = 1.0f;
+    f_body = f_small = f_label = f_title = f_head = nullptr;
+    char wd[MAX_PATH]; UINT wn = GetWindowsDirectoryA(wd, MAX_PATH);
+    std::string fdir = std::string(wn ? wd : "C:\\Windows") + "\\Fonts\\";
+    std::string reg = fdir + "segoeui.ttf", semi = fdir + "seguisb.ttf";
+    if (GetFileAttributesA(reg.c_str()) != INVALID_FILE_ATTRIBUTES) {
+        if (GetFileAttributesA(semi.c_str()) == INVALID_FILE_ATTRIBUTES) semi = reg;
+        ImFontConfig fc; fc.OversampleH = 2; fc.OversampleV = 2;   // smooth, even strokes
+        f_body = io.Fonts->AddFontFromFileTTF(reg.c_str(), 18.0f * sc, &fc);     // body (default font)
+        f_small = io.Fonts->AddFontFromFileTTF(reg.c_str(), 16.0f * sc, &fc);    // supporting text (never smaller than 16)
+        f_label = io.Fonts->AddFontFromFileTTF(semi.c_str(), 17.0f * sc, &fc);   // buttons, chips, field labels
+        f_title = io.Fonts->AddFontFromFileTTF(semi.c_str(), 19.0f * sc, &fc);   // card titles
+        f_head = io.Fonts->AddFontFromFileTTF(semi.c_str(), 26.0f * sc, &fc);    // app name / empty-state headline
+    } else io.FontGlobalScale = sc * 1.2f;
+    ImGuiStyle& st = ImGui::GetStyle();
+    st = ImGuiStyle();
+    st.WindowRounding = 0; st.ChildRounding = 12 * sc; st.FrameRounding = 8 * sc; st.GrabRounding = 8 * sc; st.PopupRounding = 8 * sc;
+    st.ScrollbarRounding = 4 * sc; st.ScrollbarSize = 8 * sc; st.GrabMinSize = 16 * sc;
+    st.ItemSpacing = ImVec2(8 * sc, 6 * sc); st.ItemInnerSpacing = ImVec2(6 * sc, 6 * sc);
+    st.FramePadding = ImVec2(10 * sc, 7 * sc); st.WindowPadding = ImVec2(12 * sc, 12 * sc);
+    st.WindowBorderSize = 0; st.ChildBorderSize = 0; st.PopupBorderSize = 1; st.FrameBorderSize = 1;
+}
+
 static void gui_loop() {
     SetProcessDPIAware();
     UINT dpi = GetDpiForSystem();
-    float sc = dpi ? (float)dpi / 96.0f : 1.0f;
-    if (sc < 1.0f) sc = 1.0f;
+    float dsc = dpi ? (float)dpi / 96.0f : 1.0f;
+    if (dsc < 1.0f) dsc = 1.0f;
+    static const float tmul[4] = { 1.0f, 1.25f, 1.5f, 2.0f };   // text size levels (WCAG: readable up to 200 %)
+    GuiState gs;
+    settings_load(gs.s);
+    int cur_tsz = gs.s.tsz;
+    float sc = dsc * tmul[cur_tsz];
     g_sc = sc;
     if (SDL_Init(SDL_INIT_VIDEO) != 0) { ulog("[error] SDL init failed: %s", SDL_GetError()); return; }
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
-    SDL_Window* win = SDL_CreateWindow("UsbCam", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, (int)(1040 * sc), (int)(640 * sc), SDL_WINDOW_RESIZABLE);
+    SDL_Window* win = SDL_CreateWindow("UsbCam", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, (int)(1120 * dsc * std::min(tmul[cur_tsz], 1.25f)), (int)(680 * dsc * std::min(tmul[cur_tsz], 1.25f)), SDL_WINDOW_RESIZABLE);
     SDL_Renderer* ren = win ? SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC) : nullptr;
     if (win && !ren) ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_SOFTWARE);
     if (!win || !ren) { ulog("[error] window failed: %s", SDL_GetError()); return; }
-    SDL_SetWindowMinimumSize(win, (int)(800 * sc), (int)(520 * sc));
+    auto set_min = [&](float s2) {   // minimum window size, never larger than the screen
+        SDL_Rect db; int mw = (int)(860 * s2), mh = (int)(540 * s2);
+        if (SDL_GetDisplayBounds(0, &db) == 0) { mw = std::min(mw, db.w); mh = std::min(mh, db.h); }
+        SDL_SetWindowMinimumSize(win, mw, mh);
+        int cw = 0, ch = 0; SDL_GetWindowSize(win, &cw, &ch);
+        if (cw < mw || ch < mh) SDL_SetWindowSize(win, std::max(cw, mw), std::max(ch, mh));
+    };
+    set_min(sc);
     // same icon as the phone app: window / taskbar icon and the logo in the header
     SDL_Surface* isf = SDL_CreateRGBSurfaceWithFormatFrom((void*)g_icon_rgba, 64, 64, 32, 64 * 4, SDL_PIXELFORMAT_RGBA32);
     if (isf) { SDL_SetWindowIcon(win, isf); SDL_FreeSurface(isf); }
@@ -454,31 +497,11 @@ static void gui_loop() {
     ImGuiIO& io = ImGui::GetIO();
     io.IniFilename = nullptr;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;   // Tab / arrows / Space work on every control
-    char wd[MAX_PATH]; UINT wn = GetWindowsDirectoryA(wd, MAX_PATH);
-    std::string fdir = std::string(wn ? wd : "C:\\Windows") + "\\Fonts\\";
-    std::string reg = fdir + "segoeui.ttf", semi = fdir + "seguisb.ttf";
-    if (GetFileAttributesA(reg.c_str()) != INVALID_FILE_ATTRIBUTES) {
-        if (GetFileAttributesA(semi.c_str()) == INVALID_FILE_ATTRIBUTES) semi = reg;
-        ImFontConfig fc; fc.OversampleH = 2; fc.OversampleV = 2;   // smooth, even strokes
-        f_body = io.Fonts->AddFontFromFileTTF(reg.c_str(), 16.0f * sc, &fc);     // body (default font)
-        f_small = io.Fonts->AddFontFromFileTTF(reg.c_str(), 14.0f * sc, &fc);    // supporting text (never smaller than 14)
-        f_label = io.Fonts->AddFontFromFileTTF(semi.c_str(), 15.0f * sc, &fc);   // buttons, chips, field labels
-        f_title = io.Fonts->AddFontFromFileTTF(semi.c_str(), 16.0f * sc, &fc);   // card titles
-        f_head = io.Fonts->AddFontFromFileTTF(semi.c_str(), 22.0f * sc, &fc);    // app name / empty-state headline
-    } else io.FontGlobalScale = sc * 1.2f;
-    ImGuiStyle& st = ImGui::GetStyle();
-    st.WindowRounding = 0; st.ChildRounding = 12 * sc; st.FrameRounding = 8 * sc; st.GrabRounding = 8 * sc; st.PopupRounding = 8 * sc;
-    st.ScrollbarRounding = 4 * sc; st.ScrollbarSize = 8 * sc; st.GrabMinSize = 16 * sc;
-    st.ItemSpacing = ImVec2(8 * sc, 6 * sc); st.ItemInnerSpacing = ImVec2(6 * sc, 6 * sc);
-    st.FramePadding = ImVec2(10 * sc, 6 * sc); st.WindowPadding = ImVec2(12 * sc, 12 * sc);
-    st.WindowBorderSize = 0; st.ChildBorderSize = 0; st.PopupBorderSize = 1; st.FrameBorderSize = 1;
+    g_pal = gs.s.light ? pal_light() : pal_dark();
+    build_ui(sc);
+    apply_theme(g_pal);
     ImGui_ImplSDL2_InitForSDLRenderer(win, ren);
     ImGui_ImplSDLRenderer2_Init(ren);
-
-    GuiState gs;
-    settings_load(gs.s);
-    g_pal = gs.s.light ? pal_light() : pal_dark();
-    apply_theme(g_pal);
     g_mirror = gs.s.mirror ? 1 : 0;
     gui_apply(gs.s, false);
     std::string vcam_msg;
@@ -508,7 +531,9 @@ static void gui_loop() {
             std::lock_guard<std::mutex> l(g_prevmu);
             if (g_prev_new) { av_frame_unref(show); av_frame_move_ref(show, g_prev); g_prev_new = false; newf = true; have_frame = true; }
         }
-        if (newf && show->width > 0) {
+        const bool pv = gs.s.preview;
+        if (!pv && tex) { SDL_DestroyTexture(tex); tex = nullptr; tw = th = 0; tfmt = -1; }   // preview off: free the picture
+        if (pv && newf && show->width > 0) {
             int fmt = show->format;
             if (fmt == AV_PIX_FMT_NV12 || fmt == AV_PIX_FMT_YUV420P) {
                 if (!tex || tw != show->width || th != show->height || tfmt != fmt) {
@@ -526,8 +551,8 @@ static void gui_loop() {
         // layout: 52dp app bar, preview stage on the left, 340dp control panel on the right, 28dp status bar, 12dp margins
         int ww = 0, wh = 0;
         SDL_GetRendererOutputSize(ren, &ww, &wh);
-        float panelW = 352 * sc; if (panelW > ww * 0.5f) panelW = ww * 0.5f;
-        const float mg = 12 * sc, pad = 8 * sc, barH = 52 * sc, statH = 28 * sc;
+        float panelW = 380 * sc; if (panelW > ww * 0.5f) panelW = ww * 0.5f;
+        const float mg = 12 * sc, pad = 8 * sc, barH = 56 * sc, statH = 32 * sc;
         const float sx0 = mg, sy0 = barH, sx1 = (float)ww - panelW, sy1 = (float)wh - statH;
         bool live = have_frame && (now_us() - g_prev_us.load()) < 1500000;
 
@@ -538,7 +563,7 @@ static void gui_loop() {
         SDL_RenderFillRect(ren, &stg);
         bool vid = false;
         SDL_Rect dst = { 0, 0, 0, 0 };
-        if (tex && live) {
+        if (pv && tex && live) {
             float aw = sx1 - sx0 - 2 * pad, ah = sy1 - sy0 - 2 * pad;
             float s = std::min(aw / (float)tw, ah / (float)th);
             if (s > 0) {
@@ -555,6 +580,14 @@ static void gui_loop() {
         { std::lock_guard<std::mutex> l(g_infomu); pst = g_pstatus; actual = g_actual;
           if (g_caps != gs.capsTxt) { gs.capsTxt = g_caps; parse_caps(gs); sync_selection(gs); } }
 
+        if (gs.s.tsz != cur_tsz) {   // text size changed: rebuild fonts and sizes before the frame starts
+            cur_tsz = gs.s.tsz; sc = dsc * tmul[cur_tsz];
+            build_ui(sc); apply_theme(g_pal);
+            ImGui_ImplSDLRenderer2_DestroyDeviceObjects();
+            set_min(sc);
+            settings_save(gs.s);
+            continue;
+        }
         ImGui_ImplSDLRenderer2_NewFrame();
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
@@ -570,16 +603,18 @@ static void gui_loop() {
             RoundOut(bg, ImVec2((float)dst.x, (float)dst.y), ImVec2((float)(dst.x + dst.w), (float)(dst.y + dst.h)), 10 * sc, 14 * sc, Cu(g_pal.stage));
             bg->PopClipRect();
         }
-        if (!live) {
+        if (!live || !pv) {
             std::string sub = get_sub();
+            std::string ttl = title;
+            if (live) { ttl = "Preview is off"; sub = "The phone is connected and streaming, and the virtual camera still works. Turn on Live preview to see the picture here."; }
             float bw = std::min(sx1 - sx0 - 48 * sc, 440 * sc);
-            ImVec2 t1 = TSize(f_head, title.c_str(), bw), t2 = TSize(f_body, sub.c_str(), bw);
+            ImVec2 t1 = TSize(f_head, ttl.c_str(), bw), t2 = TSize(f_body, sub.c_str(), bw);
             float isz = 72 * sc, gap = 14 * sc;
             float total = isz + gap + t1.y + 6 * sc + t2.y;
             float cx = (sx0 + sx1) * 0.5f, y = (sy0 + sy1) * 0.5f - total * 0.5f;
             if (iconTex) bg->AddImage((ImTextureID)iconTex, ImVec2(cx - isz * 0.5f, y), ImVec2(cx + isz * 0.5f, y + isz));
             y += isz + gap;
-            DText(bg, f_head, ImVec2(cx - t1.x * 0.5f, y), Cu(g_pal.onSurf), title.c_str(), bw);
+            DText(bg, f_head, ImVec2(cx - t1.x * 0.5f, y), Cu(g_pal.onSurf), ttl.c_str(), bw);
             y += t1.y + 6 * sc;
             DText(bg, f_body, ImVec2(cx - t2.x * 0.5f, y), Cu(g_pal.onVar), sub.c_str(), bw);
         } else if (vid) {
@@ -603,24 +638,31 @@ static void gui_loop() {
             ImVec2 nt = TSize(f_head, "UsbCam");
             DText(dl, f_head, ImVec2(lx + isz + 10 * sc, cy - nt.y * 0.5f), Cu(g_pal.onSurf), "UsbCam");
 
-            // theme button (36dp round, tonal)
-            const float bs = 36 * sc;
+            // round tonal buttons on the right: text smaller, text larger, theme
+            const float bs = 40 * sc;
+            auto tbtn = [&](const char* id, ImVec2 pp, bool en, const char* tip, const char* txt, bool glyph) -> bool {
+                ImGui::SetCursorScreenPos(pp);
+                bool pr = ImGui::InvisibleButton(id, ImVec2(bs, bs));
+                bool hv = ImGui::IsItemHovered();
+                if (hv) { ImGui::SetMouseCursor(ImGuiMouseCursor_Hand); ImGui::PushFont(f_small); ImGui::SetTooltip("%s", tip); ImGui::PopFont(); }
+                ImVec4 fill = (hv && en) ? Mix(g_pal.secC, g_pal.onSecC, 0.10f) : g_pal.secC;
+                ImVec2 ctr(pp.x + bs * 0.5f, pp.y + bs * 0.5f);
+                dl->AddCircleFilled(ctr, bs * 0.5f, Cu(fill), 32);
+                if (glyph) ThemeGlyph(dl, ctr, !gs.s.light, Cu(g_pal.onSecC), Cu(fill));
+                else { ImVec2 ts = TSize(f_label, txt); DText(dl, f_label, ImVec2(ctr.x - ts.x * 0.5f, ctr.y - ts.y * 0.5f), Cu(en ? g_pal.onSecC : g_pal.outl), txt); }
+                FocusRing(dl, pp, ImVec2(pp.x + bs, pp.y + bs), bs * 0.5f);
+                return pr && en;
+            };
             ImVec2 bp((float)ww - 16 * sc - bs, cy - bs * 0.5f);
-            ImGui::SetCursorScreenPos(bp);
-            if (ImGui::InvisibleButton("##theme", ImVec2(bs, bs))) {
+            if (tbtn("##theme", bp, true, gs.s.light ? "Switch to dark theme" : "Switch to light theme", "", true)) {
                 gs.s.light = !gs.s.light;
                 g_pal = gs.s.light ? pal_light() : pal_dark();
                 apply_theme(g_pal);
                 settings_save(gs.s);
             }
-            bool hov = ImGui::IsItemHovered();
-            if (hov) {
-                ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-                ImGui::PushFont(f_small); ImGui::SetTooltip("%s", gs.s.light ? "Switch to dark theme" : "Switch to light theme"); ImGui::PopFont();
-            }
-            dl->AddCircleFilled(ImVec2(bp.x + bs * 0.5f, cy), bs * 0.5f, Cu(hov ? Mix(g_pal.secC, g_pal.onSecC, 0.10f) : g_pal.secC), 32);
-            ThemeGlyph(dl, ImVec2(bp.x + bs * 0.5f, cy), !gs.s.light, Cu(g_pal.onSecC), Cu(hov ? Mix(g_pal.secC, g_pal.onSecC, 0.10f) : g_pal.secC));
-            FocusRing(dl, bp, ImVec2(bp.x + bs, bp.y + bs), bs * 0.5f);
+            ImVec2 bpl(bp.x - bs - 8 * sc, bp.y), bmi(bpl.x - bs - 8 * sc, bp.y);
+            if (tbtn("##tplus", bpl, gs.s.tsz < 3, "Larger text", "A+", false)) gs.s.tsz++;
+            if (tbtn("##tminus", bmi, gs.s.tsz > 0, "Smaller text", "A-", false)) gs.s.tsz--;
 
             // status chip, left of the theme button
             ImVec4 cbg = g_pal.high, cfg = g_pal.onSurf, cdot = g_pal.outl;
@@ -628,10 +670,10 @@ static void gui_loop() {
             else if (kind == 2) { cbg = g_pal.warnC; cfg = g_pal.onWarnC; cdot = g_pal.warn; }
             else if (kind == 3) { cbg = g_pal.errC; cfg = g_pal.onErrC; cdot = g_pal.err; }
             float cw = ChipWidth(title.c_str());
-            float room = bp.x - 12 * sc - (lx + isz + 10 * sc + nt.x + 16 * sc);
+            float room = bmi.x - 12 * sc - (lx + isz + 10 * sc + nt.x + 16 * sc);
             std::string ct = title;
             if (cw > room && ct.size() > 14) ct = ct.substr(0, 12) + "...";
-            ChipAt(dl, bp.x - 12 * sc, cy, ct.c_str(), cbg, cfg, cdot);
+            ChipAt(dl, bmi.x - 12 * sc, cy, ct.c_str(), cbg, cfg, cdot);
             ImGui::End();
         }
 
@@ -668,6 +710,10 @@ static void gui_loop() {
                 if (g_sh.hdr) g_sh.hdr->mirror = g_mirror.load();
                 gs.s.mirror = mir; settings_save(gs.s);
             }
+            ImGui::Separator();
+            bool pvv = gs.s.preview;
+            if (SwitchRow("##pv", "Live preview", &pvv, false)) { gs.s.preview = pvv; settings_save(gs.s); }
+            TextC(f_small, g_pal.onVar, pvv ? "Shows the phone picture here. Turn off to save PC resources." : "Off. The phone and the virtual camera keep working.", true);
         }
         CardEnd();
 

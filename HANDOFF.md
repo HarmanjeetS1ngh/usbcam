@@ -230,3 +230,9 @@ Changed:
 - Not live: preview shows the logo, the state and the reason (no frozen dimmed frame any more). Default window 1040x640, minimum 800x520.
 Checked here: compiles warning-free (g++ -Wall -Wextra, ImGui 1.90.9, SDL2 2.32.10 headers, stand-in globals); rendered headless in dark/light, live/waiting/error, 100% and 150%.
 UNTESTED: real Windows build (esp. enable_language(RC) + usbcam.rc under the VS generator), real Segoe UI metrics, taskbar icon, keyboard navigation, mouse behaviour of switch/segments/combos/theme button, rounded picture corners on a real GPU.
+
+## M12d larger text, text-size control, Live preview toggle (usbcam_gui.inc only) - NOT BUILT ON WINDOWS
+- Fonts: body 18, supporting 16, labels 17sb, card titles 19sb, headline 26sb (Segoe UI). Switch 48x28, segments 36, chip 32, round buttons 40 (all above the WCAG 2.5.8 24px target).
+- Text size: "A-" / "A+" round buttons in the app bar: 100/125/150/200 % (WCAG 1.4.4), saved as tsz in app.ini. Fonts and sizes rebuild live (build_ui + ImGui_ImplSDLRenderer2_DestroyDeviceObjects); window minimum size follows.
+- "Live preview" switch (card Virtual camera, saved as preview in app.ini, default on). Off = no texture upload/render and the video texture is freed; frames are still consumed so the chip still shows Live and the stage says "Preview is off". Phone streaming and the virtual camera are unaffected (g_gui_active is NOT changed; feeder untouched).
+- Checked here: g++ -Wall -Wextra clean; rendered headless dark/light, preview on/off, 200 % text. UNTESTED on Windows: live font rebuild when pressing A+/A-, real Segoe metrics, everything from M12c.
