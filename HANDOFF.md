@@ -156,3 +156,4 @@ The user prefers direct, honest feedback, and narrow answers over long lists. Te
 - ISO chip icon is now the letters "ISO" (stroke vector, same style as WB) instead of the exposure +/- glyph.
 - Advanced regrouped: Appearance (theme buttons + wallpaper colours) / Streaming (fastest response, bitrate) / Safety (protect the phone) / reset. Same view ids, no Kotlin change.
 - Protect the phone text shortened.
+- M6m: FAB label 'Open camera preview' -> 'Camera preview' (string only).

@@ -95,7 +95,7 @@
     <string name="info_status">Technical status</string>
     <string name="info_unavailable">Camera information is unavailable.</string>
     <string name="pc_note">The PC viewer and the OBS source use these settings unless you choose custom values on the PC.</string>
-    <string name="open_preview">Open camera preview</string>
+    <string name="open_preview">Camera preview</string>
     <string name="quit">Quit UsbCam</string>
     <string name="quit_title">Quit UsbCam?</string>
     <string name="quit_message">This stops streaming and closes the camera. Your PC will lose the picture until you open UsbCam again.</string>
