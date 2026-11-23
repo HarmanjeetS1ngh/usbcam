@@ -271,7 +271,8 @@ static void FocusRing(ImDrawList* dl, ImVec2 a, ImVec2 b, float r) {
     if (ImGui::IsItemFocused() && ImGui::GetIO().NavVisible) dl->AddRect(ImVec2(a.x - S(2), a.y - S(2)), ImVec2(b.x + S(2), b.y + S(2)), Cu(g_pal.pri), r + S(2), 0, S(2));
 }
 
-static void Ico(ImDrawList* dl, int i, ImVec2 c, bool big, ImU32 col);   // defined below with the icon textures
+enum { IS_ROW = 0, IS_STAGE = 1, IS_HEAD = 2 };   // icon sizes: 20dp (rows, buttons), 56dp (stage), 24dp (card headers)
+static void Ico(ImDrawList* dl, int i, ImVec2 c, int size, ImU32 col);   // defined below with the icon textures
 
 // ---------- layout system (dp) ----------
 // 12 = gutter between regions and between cards, 16 = card padding, 12 = header -> controls and row -> row,
@@ -295,10 +296,11 @@ static void CardEnd() {
     ImGui::GetWindowDrawList()->AddRect(ImVec2(p.x + 0.5f, p.y + 0.5f), ImVec2(p.x + s.x - 0.5f, p.y + s.y - 0.5f), Cu(g_pal.outV), S(16), 0, 1.0f);
     ImGui::EndChild();
 }
-static void Divider() {
+// hairline between a card header and its content: 12 above, 1 px, 12 below
+static void Rule() {
     Gap(GUT);
     ImVec2 p = ImGui::GetCursorScreenPos(); float w = ImGui::GetContentRegionAvail().x;
-    float y = floorf(p.y), t = std::max(1.0f, floorf(g_sc + 0.5f));   // whole pixels: no blurred hairline
+    float y = floorf(p.y), t = std::max(1.0f, floorf(g_sc + 0.5f));   // whole pixels: no blurred line
     ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(floorf(p.x), y), ImVec2(floorf(p.x + w), y + t), Cu(g_pal.outV));
     ImGui::Dummy(ImVec2(w, t));
     Gap(GUT);
@@ -333,43 +335,75 @@ static bool Switch(const char* id, bool* v) {
     FocusRing(dl, p, ImVec2(p.x + w, p.y + h), h * 0.5f);
     return ch;
 }
-// One 28dp line: neutral Lucide icon, label, optional switch on the right; optional supporting text 2dp below, aligned with the label.
-static bool Row(int icon, const char* label, ImFont* f, const char* id, bool* sw, const char* desc = nullptr, const ImVec4* dc = nullptr, bool en = true) {
-    const float rh = S(28), ind = icon >= 0 ? S(30) : 0.0f;
+// ---- card building blocks. Hierarchy: title 20 semibold > row label 18 regular > description 16 muted; icons always neutral, inside a tonal tile ----
+// rounded tonal tile with a neutral icon centred in it
+static void IconTile(ImDrawList* dl, int icon, ImVec2 p, float sz, int isize, bool strong) {
+    dl->AddRectFilled(p, ImVec2(p.x + sz, p.y + sz), Cu(g_pal.high), sz * 0.30f);
+    Ico(dl, icon, ImVec2(p.x + sz * 0.5f, p.y + sz * 0.5f), isize, Cu(strong ? g_pal.onSurf : g_pal.onVar));
+}
+// card header: 44dp tile, title and the state line (2dp apart), optional master switch on the right
+static bool CardHeader(int icon, const char* title, const char* sub, const ImVec4& subc, const char* id, bool* sw, bool en = true) {
+    const float tile = S(44), gap = S(12), swW = S(48);
     ImVec2 p = ImGui::GetCursorScreenPos();
     float avail = ImGui::GetContentRegionAvail().x;
+    float tx = tile + gap, tw = avail - tx - (sw ? swW + gap : 0.0f);
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    if (icon >= 0) Ico(dl, icon, ImVec2(p.x + S(10), p.y + rh * 0.5f), false, Cu(g_pal.onVar));
-    ImVec2 ts = TSize(f, label);
-    DText(dl, f, ImVec2(p.x + ind, p.y + (rh - ts.y) * 0.5f), Cu(g_pal.onSurf), label);
+    ImVec2 t1 = TSize(f_title, title), t2 = TSize(f_small, sub, tw);
+    float block = t1.y + S(4) + t2.y, hh = std::max(tile, block);
+    IconTile(dl, icon, ImVec2(p.x, p.y + (hh - tile) * 0.5f), tile, IS_HEAD, true);
+    float ty = p.y + (hh - block) * 0.5f;
+    DText(dl, f_title, ImVec2(p.x + tx, ty), Cu(g_pal.onSurf), title);
+    DText(dl, f_small, ImVec2(p.x + tx, ty + t1.y + S(4)), Cu(subc), sub, tw);
     bool ch = false;
     if (sw) {
-        ImGui::SetCursorScreenPos(ImVec2(p.x + avail - S(48), p.y));
+        ImGui::SetCursorScreenPos(ImVec2(p.x + avail - swW, p.y + (hh - S(28)) * 0.5f));
         ImGui::BeginDisabled(!en);
         ch = Switch(id, sw);
         ImGui::EndDisabled();
     }
     ImGui::SetCursorScreenPos(p);
-    ImGui::Dummy(ImVec2(avail, rh));
-    if (desc && *desc) {
-        Gap(2);
-        if (ind > 0) ImGui::Indent(ind);
-        TextC(f_small, dc ? *dc : g_pal.onVar, desc, true);
-        if (ind > 0) ImGui::Unindent(ind);
-    }
+    ImGui::Dummy(ImVec2(avail, hh));
     return ch;
 }
-// read-only line: icon, label on the left, value on the right
-static void InfoRow(int icon, const char* label, const char* value) {
-    const float rh = S(28);
+// option row: 36dp tile, label, one muted description line, switch on the right
+static bool ToggleRow(int icon, const char* label, const char* desc, const char* id, bool* sw) {
+    const float tile = S(36), gap = S(12), swW = S(48);
+    ImVec2 p = ImGui::GetCursorScreenPos();
+    float avail = ImGui::GetContentRegionAvail().x;
+    float tx = tile + gap, tw = avail - tx - swW - gap;
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    ImVec2 t1 = TSize(f_body, label), t2 = TSize(f_small, desc, tw);
+    float block = t1.y + S(2) + t2.y, hh = std::max(tile, block);
+    IconTile(dl, icon, ImVec2(p.x, p.y + (hh - tile) * 0.5f), tile, IS_ROW, false);
+    float ty = p.y + (hh - block) * 0.5f;
+    DText(dl, f_body, ImVec2(p.x + tx, ty), Cu(g_pal.onSurf), label);
+    DText(dl, f_small, ImVec2(p.x + tx, ty + t1.y + S(2)), Cu(g_pal.onVar), desc, tw);
+    ImGui::SetCursorScreenPos(ImVec2(p.x + avail - swW, p.y + (hh - S(28)) * 0.5f));
+    bool ch = Switch(id, sw);
+    ImGui::SetCursorScreenPos(p);
+    ImGui::Dummy(ImVec2(avail, hh));
+    return ch;
+}
+// meter row: 36dp tile; label and value on one line, a 6dp progress bar under them (frac < 0 = no value yet)
+static void MetricRow(int icon, const char* label, const char* value, float frac, const ImVec4& fill) {
+    const float tile = S(36), gap = S(12), bh = S(6);
     ImVec2 p = ImGui::GetCursorScreenPos();
     float avail = ImGui::GetContentRegionAvail().x;
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    Ico(dl, icon, ImVec2(p.x + S(10), p.y + rh * 0.5f), false, Cu(g_pal.onVar));
-    ImVec2 ls = TSize(f_body, label), vs = TSize(f_body, value);
-    DText(dl, f_body, ImVec2(p.x + S(30), p.y + (rh - ls.y) * 0.5f), Cu(g_pal.onVar), label);
-    DText(dl, f_body, ImVec2(p.x + avail - vs.x, p.y + (rh - vs.y) * 0.5f), Cu(g_pal.onSurf), value);
-    ImGui::Dummy(ImVec2(avail, rh));
+    float x0 = p.x + tile + gap, x1 = p.x + avail;
+    ImVec2 ls = TSize(f_body, label), vs = TSize(f_label, value);
+    float lh = std::max(ls.y, vs.y), block = lh + S(6) + bh, hh = std::max(tile, block);
+    IconTile(dl, icon, ImVec2(p.x, p.y + (hh - tile) * 0.5f), tile, IS_ROW, false);
+    float ty = p.y + (hh - block) * 0.5f;
+    DText(dl, f_body, ImVec2(x0, ty + (lh - ls.y) * 0.5f), Cu(g_pal.onSurf), label);
+    DText(dl, f_label, ImVec2(x1 - vs.x, ty + (lh - vs.y) * 0.5f), Cu(frac < 0 ? g_pal.onVar : g_pal.onSurf), value);
+    float by = floorf(ty + lh + S(6));
+    dl->AddRectFilled(ImVec2(x0, by), ImVec2(x1, by + bh), Cu(Mix(g_pal.high, g_pal.onVar, 0.22f)), bh * 0.5f);
+    if (frac > 0.0f) {
+        float fw = std::max(bh, (x1 - x0) * std::min(1.0f, frac));
+        dl->AddRectFilled(ImVec2(x0, by), ImVec2(x0 + fw, by + bh), Cu(fill), bh * 0.5f);
+    }
+    ImGui::Dummy(ImVec2(avail, hh));
 }
 // small label above a field
 static void FieldLabel(const char* t) { TextC(f_label, g_pal.onVar, t); Gap(4); }
@@ -447,12 +481,12 @@ static void Overlay(ImDrawList* dl, ImVec2 pos, const char* t) {
 }
 // Lucide icons: the 96px masks are area-averaged to the exact pixel size of each use (20dp and 56dp, times the UI scale),
 // so strokes stay crisp at every DPI / text size. The colour is applied when drawing.
-static SDL_Texture* g_ic[2][IC_N];   // [0] = 20dp, [1] = 56dp
-static int g_icpx[2];
+static SDL_Texture* g_ic[3][IC_N];   // [IS_ROW] = 20dp, [IS_STAGE] = 56dp, [IS_HEAD] = 24dp
+static int g_icpx[3];
 static void icons_build(SDL_Renderer* ren, float sc) {
-    const float dp[2] = { 20.0f, 56.0f };
+    const float dp[3] = { 20.0f, 56.0f, 24.0f };
     static unsigned char px[IC_SZ * IC_SZ * 4];
-    for (int v = 0; v < 2; v++) {
+    for (int v = 0; v < 3; v++) {
         int n = (int)(dp[v] * sc + 0.5f); if (n < 8) n = 8;
         g_icpx[v] = n;
         int tn = n < IC_SZ ? n : IC_SZ;   // larger than the mask: keep the mask size and let the GPU scale it up
@@ -476,11 +510,11 @@ static void icons_build(SDL_Renderer* ren, float sc) {
         }
     }
 }
-// draws icon i centred on c, big = the 56dp variant, pixel-aligned
-static void Ico(ImDrawList* dl, int i, ImVec2 c, bool big, ImU32 col) {
-    SDL_Texture* t = (i >= 0 && i < IC_N) ? g_ic[big ? 1 : 0][i] : nullptr;
+// draws icon i centred on c (size = IS_ROW / IS_STAGE / IS_HEAD), pixel-aligned
+static void Ico(ImDrawList* dl, int i, ImVec2 c, int size, ImU32 col) {
+    SDL_Texture* t = (i >= 0 && i < IC_N) ? g_ic[size][i] : nullptr;
     if (!t) return;
-    float n = (float)g_icpx[big ? 1 : 0], x = floorf(c.x - n * 0.5f + 0.5f), y = floorf(c.y - n * 0.5f + 0.5f);
+    float n = (float)g_icpx[size], x = floorf(c.x - n * 0.5f + 0.5f), y = floorf(c.y - n * 0.5f + 0.5f);
     dl->AddImage((ImTextureID)t, ImVec2(x, y), ImVec2(x + n, y + n), ImVec2(0, 0), ImVec2(1, 1), col);
 }
 
@@ -488,8 +522,7 @@ template <class F> static auto imrender(F f, ImDrawData* d, SDL_Renderer* r, int
 template <class F> static void imrender(F f, ImDrawData* d, SDL_Renderer*, long) { f(d); }
 
 // 0 idle, 1 live, 2 waiting / working, 3 error
-static int status_view(bool live, std::string& title) {
-    std::string s = get_status();
+static int status_view(bool live, const std::string& s, std::string& title) {
     if (live) { title = "Live"; return 1; }
     if (s.rfind("waiting for phone", 0) == 0) { title = "Waiting for phone"; return 2; }
     if (s.rfind("cannot reach", 0) == 0) { title = "Can't reach the phone app"; return 3; }
@@ -503,6 +536,19 @@ static int status_view(bool live, std::string& title) {
     title = s.empty() ? std::string("Starting...") : (s.size() > 30 ? s.substr(0, 30) + "..." : s);
     return 2;
 }
+
+// The feeder briefly sets "waiting for phone" on every retry cycle (also while the phone camera is switched off), which made the
+// window flip between two messages. The window therefore keeps showing the last specific message and only accepts a new one when it
+// has been stable for a while; "waiting for phone" must hold for 6 s before it replaces a message that was reached with the phone present.
+struct StatusLatch {
+    std::string cand, shown, sub; int64_t since = 0;
+    void update(const std::string& raw, const std::string& rsub, int64_t now) {
+        if (raw != cand) { cand = raw; since = now; }
+        if (shown.empty() || raw == shown) { shown = raw; sub = rsub; return; }
+        bool blip = raw.rfind("waiting for phone", 0) == 0 && shown.rfind("waiting for phone", 0) != 0 && shown.rfind("starting", 0) != 0;
+        if (now - since >= (blip ? 6000000 : 1000000)) { shown = raw; sub = rsub; }
+    }
+};
 
 // ---------- the window ----------
 // (re)builds fonts and style for a given total scale (display DPI x text-size level)
@@ -521,7 +567,7 @@ static void build_ui(float sc) {
         f_body = io.Fonts->AddFontFromFileTTF(reg.c_str(), 18.0f * sc, &fc);     // body (default font)
         f_small = io.Fonts->AddFontFromFileTTF(reg.c_str(), 16.0f * sc, &fc);    // supporting text (never smaller than 16)
         f_label = io.Fonts->AddFontFromFileTTF(semi.c_str(), 17.0f * sc, &fc);   // buttons, chips, field labels
-        f_title = io.Fonts->AddFontFromFileTTF(semi.c_str(), 19.0f * sc, &fc);   // card titles
+        f_title = io.Fonts->AddFontFromFileTTF(semi.c_str(), 22.0f * sc, &fc);   // card titles
         f_head = io.Fonts->AddFontFromFileTTF(semi.c_str(), 26.0f * sc, &fc);    // app name / empty-state headline
     } else io.FontGlobalScale = sc * 1.2f;
     ImGuiStyle& st = ImGui::GetStyle();
@@ -546,7 +592,7 @@ static void gui_loop() {
     g_sc = sc;
     if (SDL_Init(SDL_INIT_VIDEO) != 0) { ulog("[error] SDL init failed: %s", SDL_GetError()); return; }
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
-    SDL_Window* win = SDL_CreateWindow("UsbCam", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, (int)(1120 * dsc * std::min(tmul[cur_tsz], 1.25f)), (int)(680 * dsc * std::min(tmul[cur_tsz], 1.25f)), SDL_WINDOW_RESIZABLE);
+    SDL_Window* win = SDL_CreateWindow("UsbCam", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, (int)(1120 * dsc * std::min(tmul[cur_tsz], 1.25f)), (int)(720 * dsc * std::min(tmul[cur_tsz], 1.25f)), SDL_WINDOW_RESIZABLE);
     SDL_Renderer* ren = win ? SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC) : nullptr;
     if (win && !ren) ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_SOFTWARE);
     if (!win || !ren) { ulog("[error] window failed: %s", SDL_GetError()); return; }
@@ -585,6 +631,7 @@ static void gui_loop() {
     AVFrame* show = av_frame_alloc();
     SDL_Texture* tex = nullptr; int tw = 0, th = 0, tfmt = -1;
     bool have_frame = false, running = true;
+    StatusLatch latch;
     g_gui_active = true;
 
     while (running && g_run) {
@@ -663,7 +710,8 @@ static void gui_loop() {
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
 
-        std::string title; int kind = status_view(live, title);
+        latch.update(get_status(), get_sub(), now_us());
+        std::string title; int kind = status_view(live, latch.shown, title);
         double fps = g_stat_fps.load(), lat = g_stat_lat.load();
         ImDrawList* bg = ImGui::GetBackgroundDrawList();
 
@@ -675,17 +723,19 @@ static void gui_loop() {
             bg->PopClipRect();
         }
         if (!live || !pv) {
-            std::string sub = get_sub();
+            std::string sub = latch.sub;
             std::string ttl = title;
             if (live) { ttl = "Preview is off"; sub = "The phone is connected and streaming, and the virtual camera still works. Turn on Live preview to see the picture here."; }
             float bw = std::min(sx1 - sx0 - 48 * sc, 400 * sc);
             ImVec2 t1 = TSize(f_head, ttl.c_str(), bw);
             float t2h = CenterWrap(nullptr, f_body, 0, 0, 0, sub, bw);
-            float isz = (float)g_icpx[1], gap = 20 * sc;
-            float total = isz + gap + t1.y + 8 * sc + t2h;
+            float tsz = 112 * sc, gap = 24 * sc;   // icon tile
+            float total = tsz + gap + t1.y + 8 * sc + t2h;
             float cx = (sx0 + sx1) * 0.5f, y = (sy0 + sy1) * 0.5f - total * 0.5f;
-            Ico(bg, live ? IC_VIDOFF : (kind == 3 ? IC_ALERT : IC_PHONE), ImVec2(cx, y + isz * 0.5f), true, Cu(g_pal.outl));   // neutral: the chip carries the status colour
-            y += isz + gap;
+            bg->AddRectFilled(ImVec2(cx - tsz * 0.5f, y), ImVec2(cx + tsz * 0.5f, y + tsz), Cu(g_pal.card), 32 * sc);
+            bg->AddRect(ImVec2(cx - tsz * 0.5f + 0.5f, y + 0.5f), ImVec2(cx + tsz * 0.5f - 0.5f, y + tsz - 0.5f), Cu(g_pal.outV), 32 * sc, 0, 1.0f);
+            Ico(bg, live ? IC_VIDOFF : (kind == 3 ? IC_ALERT : IC_PHONE), ImVec2(cx, y + tsz * 0.5f), IS_STAGE, Cu(g_pal.outl));   // neutral: the chip carries the status colour
+            y += tsz + gap;
             DText(bg, f_head, ImVec2(cx - t1.x * 0.5f, y), Cu(g_pal.onSurf), ttl.c_str(), bw);
             y += t1.y + 8 * sc;
             CenterWrap(bg, f_body, cx, y, Cu(g_pal.onVar), sub, bw);
@@ -717,7 +767,7 @@ static void gui_loop() {
                 ImVec4 fill = (hv && en) ? Mix(g_pal.secC, g_pal.onSecC, 0.10f) : g_pal.secC;
                 ImVec2 ctr(pp.x + bs * 0.5f, pp.y + bs * 0.5f);
                 dl->AddCircleFilled(ctr, bs * 0.5f, Cu(fill), 32);
-                if (glyph) Ico(dl, gs.s.light ? IC_MOON : IC_SUN, ctr, false, Cu(g_pal.onSecC));
+                if (glyph) Ico(dl, gs.s.light ? IC_MOON : IC_SUN, ctr, IS_ROW, Cu(g_pal.onSecC));
                 else { ImVec2 ts = TSize(f_label, txt); DText(dl, f_label, ImVec2(ctr.x - ts.x * 0.5f, ctr.y - ts.y * 0.5f), Cu(en ? g_pal.onSecC : g_pal.outl), txt); }
                 FocusRing(dl, pp, ImVec2(pp.x + bs, pp.y + bs), bs * 0.5f);
                 return pr && en;
@@ -756,57 +806,77 @@ static void gui_loop() {
 
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));   // vertical gaps between cards are explicit (Gap)
 
-        // virtual camera: master switch, state line, then the two output options
+        // virtual camera: master switch + state line, then the two output options
         CardBegin("##vcam");
         {
             bool v = g_vcam_on.load();
             std::string vsub; const ImVec4* vcol = &g_pal.onVar;
+            bool hint = false;
             if (!g_vcam_supported) { vsub = g_vcam_why; vcol = &g_pal.err; }
             else if (!vcam_msg.empty()) { vsub = vcam_msg; vcol = &g_pal.err; }
             else if (g_vcam_on.load()) {
-                if (consumer_recent(2000)) { vsub = "An app is using \"UsbCam Camera\"."; vcol = &g_pal.ok; }
-                else vsub = "On" SEP "pick \"UsbCam Camera\" in Zoom, Meet, Teams or Discord.";
+                if (consumer_recent(2000)) { vsub = "In use by an app"; vcol = &g_pal.ok; }
+                else { vsub = "On" SEP "ready for your apps"; hint = true; }
             } else vsub = "Off";
-            if (Row(IC_VIDEO, "Virtual camera", f_title, "##vc", &v, vsub.c_str(), vcol, g_vcam_supported)) {
+            if (CardHeader(IC_VIDEO, "Virtual camera", vsub.c_str(), *vcol, "##vc", &v, g_vcam_supported)) {
                 std::string err; bool ok = vcam_enable(v, err);
                 vcam_msg = ok ? std::string() : err;
                 gs.s.vcam = ok ? v : false;
                 settings_save(gs.s);
             }
-            Divider();
+            Rule();
             bool mir = g_mirror.load() != 0;
-            if (Row(IC_FLIP, "Mirror picture", f_body, "##mir", &mir, "Flips the picture left to right.")) {
+            if (ToggleRow(IC_FLIP, "Mirror picture", "Flip left to right", "##mir", &mir)) {
                 g_mirror = mir ? 1 : 0;
                 if (g_sh.hdr) g_sh.hdr->mirror = g_mirror.load();
                 gs.s.mirror = mir; settings_save(gs.s);
             }
             Gap(GUT);
             bool pvv = gs.s.preview;
-            if (Row(pvv ? IC_EYE : IC_EYEOFF, "Live preview", f_body, "##pv", &pvv, pvv ? "Shows the phone picture here. Turn off to save PC resources." : "Off. The phone and the virtual camera keep working.")) { gs.s.preview = pvv; settings_save(gs.s); }
+            if (ToggleRow(pvv ? IC_EYE : IC_EYEOFF, "Live preview", pvv ? "Show the picture here" : "Off, saves PC resources", "##pv", &pvv)) { gs.s.preview = pvv; settings_save(gs.s); }
+            if (hint) { Gap(GUT); TextC(f_small, g_pal.onVar, "Choose \"UsbCam Camera\" in your app.", true); }
         }
         CardEnd();
         Gap(GUT);
 
-        // phone (battery, temperature) - above the tall picture card so it never scrolls out of view
+        // phone: three meters (battery, temperature, connection). Bars carry the value, the text carries the exact number and any warning.
         CardBegin("##phone");
         {
-            JV pv;
-            bool conn = !pst.empty() && jparse_all(pst, pv) && pv.t == 'o' && pv.get("batt");
-            Row(IC_PHONE, "Phone", f_title, nullptr, nullptr, conn ? (live ? "Connected" : "Last known status") : "Not connected");
+            JV pj;
+            bool conn = !pst.empty() && jparse_all(pst, pj) && pj.t == 'o' && pj.get("batt");
+            CardHeader(IC_PHONE, "Phone", conn ? (live ? "Connected" : "Last known status") : "Not connected", g_pal.onVar, nullptr, nullptr);
+            Rule();
+            char vb[48];
             if (conn) {
-                Divider();
-                char b1[48], b2[48];
-                bool chg = pv.num("plugged") > 0;
-                snprintf(b1, sizeof b1, "%d%%%s", (int)pv.num("batt"), chg ? SEP "charging" : "");
-                snprintf(b2, sizeof b2, "%.1f " DEG "C", pv.num("tempC"));
-                InfoRow(chg ? IC_CHARGE : IC_BATT, "Battery", b1);
-                Gap(4);
-                InfoRow(IC_THERM, "Temperature", b2);
-                if (pv.num("guardStage") > 0) {
-                    std::string gm = pv.str("guard");
-                    Gap(8);
-                    TextC(f_small, g_pal.warn, gm.empty() ? "The phone is protecting itself (heat or battery)." : gm.c_str(), true);
-                }
+                bool chg = pj.num("plugged") > 0;
+                int bt = (int)pj.num("batt");
+                bool low = !chg && bt <= 20, crit = !chg && bt <= 10;
+                snprintf(vb, sizeof vb, "%d%%%s", bt, chg ? SEP "charging" : (crit ? SEP "very low" : (low ? SEP "low" : "")));
+                MetricRow(chg ? IC_CHARGE : IC_BATT, "Battery", vb, bt / 100.0f, crit ? g_pal.err : (low ? g_pal.warn : g_pal.pri));
+                Gap(GUT);
+                double tc = pj.num("tempC");
+                bool hot = tc >= 46.0, warm = tc >= 42.0;
+                snprintf(vb, sizeof vb, "%.1f " DEG "C%s", tc, hot ? SEP "too hot" : (warm ? SEP "warm" : ""));
+                MetricRow(IC_THERM, "Temperature", vb, (float)((tc - 20.0) / 30.0), hot ? g_pal.err : (warm ? g_pal.warn : g_pal.pri));
+            } else {
+                MetricRow(IC_BATT, "Battery", "No data", -1.0f, g_pal.pri);
+                Gap(GUT);
+                MetricRow(IC_THERM, "Temperature", "No data", -1.0f, g_pal.pri);
+            }
+            Gap(GUT);
+            // connection: how much of the requested frame rate really arrives, plus the delay
+            if (live && fps > 0.0) {
+                double want = 30.0; JV av;
+                if (!actual.empty() && jparse_all(actual, av) && av.t == 'o' && av.num("fps") > 0) want = av.num("fps");
+                double r = std::min(1.0, fps / want);
+                const char* q = r >= 0.9 ? "Good" : (r >= 0.6 ? "Fair" : "Weak");
+                snprintf(vb, sizeof vb, "%s" SEP "%.0f ms", q, lat);
+                MetricRow(IC_SIGNAL, "Connection", vb, (float)r, r >= 0.9 ? g_pal.pri : (r >= 0.6 ? g_pal.warn : g_pal.err));
+            } else MetricRow(IC_SIGNAL, "Connection", "No video", -1.0f, g_pal.pri);
+            if (conn && pj.num("guardStage") > 0) {
+                std::string gm = pj.str("guard");
+                Gap(GUT);
+                TextC(f_small, g_pal.warn, gm.empty() ? "The phone is protecting itself (heat or battery)." : gm.c_str(), true);
             }
         }
         CardEnd();
@@ -815,8 +885,8 @@ static void gui_loop() {
         // phone picture
         CardBegin("##pic");
         {
-            Row(IC_CAMERA, "Phone picture", f_title, nullptr, nullptr, gs.s.phone_default ? "Using the phone's own settings." : "Choose what the phone sends.");
-            Divider();
+            CardHeader(IC_CAMERA, "Phone picture", gs.s.phone_default ? "Using the phone's own settings" : "Custom settings", g_pal.onVar, nullptr, nullptr);
+            Rule();
             static const char* const srcLab[2] = { "Phone default", "Custom" };
             int ssel = gs.s.phone_default ? 0 : 1;
             int sn = Segmented("##src", srcLab, 2, ssel);
@@ -914,7 +984,7 @@ static void gui_loop() {
     ImGui_ImplSDL2_Shutdown();
     ImGui::DestroyContext();
     if (tex) SDL_DestroyTexture(tex);
-    for (int v = 0; v < 2; v++) for (int i = 0; i < IC_N; i++) if (g_ic[v][i]) SDL_DestroyTexture(g_ic[v][i]);
+    for (int v = 0; v < 3; v++) for (int i = 0; i < IC_N; i++) if (g_ic[v][i]) SDL_DestroyTexture(g_ic[v][i]);
     av_frame_free(&show);
     SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); SDL_Quit();
 }
