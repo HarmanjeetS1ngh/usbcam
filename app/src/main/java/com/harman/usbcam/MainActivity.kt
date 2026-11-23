@@ -5,7 +5,10 @@ import android.content.DialogInterface
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
+import android.graphics.Color
 import android.graphics.Rect
+import android.graphics.drawable.GradientDrawable
+import androidx.core.graphics.ColorUtils
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -75,6 +78,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var fab: ExtendedFloatingActionButton
     private lateinit var statusCard: MaterialCardView
     private lateinit var statusIcon: ImageView
+    private lateinit var statusContent: View
+    private var gradKey = 0L
     private lateinit var statusTitle: TextView
     private lateinit var statusText: TextView
     private lateinit var chipBattery: Chip
@@ -216,6 +221,7 @@ class MainActivity : AppCompatActivity() {
         fab = findViewById(R.id.fab_preview)
         statusCard = findViewById(R.id.status_card)
         statusIcon = findViewById(R.id.status_icon)
+        statusContent = findViewById(R.id.status_content)
         statusTitle = findViewById(R.id.status_title)
         statusText = findViewById(R.id.status_text)
         chipBattery = findViewById(R.id.chip_battery)
@@ -448,8 +454,18 @@ class MainActivity : AppCompatActivity() {
     private fun refreshStatus() {
         val s = UsbCamService
         val st = stateNow()
-        val bg = attr(st.bg); val fg = attr(st.fg)
-        statusCard.setCardBackgroundColor(bg)
+        val isLive = st.title == R.string.st_streaming
+        val bg = if (isLive) getColor(R.color.live_start) else attr(st.bg)
+        val fg = if (isLive) getColor(R.color.live_on) else attr(st.fg)
+        // premium look: soft diagonal gradient from the state colour towards a tint of the accent (works in light, dark and dynamic colours)
+        val accent = attr(if (st.bg == MR.attr.colorErrorContainer) MR.attr.colorError else MR.attr.colorPrimary)
+        val end = if (isLive) getColor(R.color.live_end) else ColorUtils.blendARGB(bg, accent, 0.2f)
+        val key = (bg.toLong() shl 32) xor (end.toLong() and 0xFFFFFFFFL)
+        if (key != gradKey) {
+            gradKey = key
+            statusCard.setCardBackgroundColor(Color.TRANSPARENT)
+            statusContent.background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(bg, end)).apply { cornerRadius = statusCard.radius }
+        }
         statusIcon.setImageResource(st.icon)
         statusIcon.imageTintList = ColorStateList.valueOf(fg)
         statusTitle.setText(st.title); statusTitle.setTextColor(fg)

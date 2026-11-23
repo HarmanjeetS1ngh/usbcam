@@ -69,5 +69,9 @@
     <color name="cam_on_lock">#000000</color>
     <color name="cam_panel">#F01D2024</color>
     <color name="ic_launcher_bg">#140A68</color>
+    <!-- Live (streaming) status card: green gradient, white text -->
+    <color name="live_start">#0B6B35</color>
+    <color name="live_end">#17894A</color>
+    <color name="live_on">#FFFFFF</color>
     <color name="white">#FFFFFF</color>
 </resources>

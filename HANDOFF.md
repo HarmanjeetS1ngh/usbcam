@@ -127,3 +127,5 @@ The user prefers direct, honest feedback, and narrow answers over long lists. Te
 - Launcher icon: user's Icon.png cropped to its rounded square -> `mipmap-*/ic_launcher(.png|_round.png)` + adaptive icon (`mipmap-anydpi-v26`, foreground `drawable-nodpi/ic_launcher_fg.png`, background colour `ic_launcher_bg` #140A68). Manifest `android:icon` / `roundIcon`.
 - Untested: adaptive-icon look on different launcher masks; card layout on tablets.
 - M6c: charging shown as bolt battery icon on the status-card chip (no 'charging' text; TalkBack description keeps it).
+- M6d: status card background = diagonal gradient (state colour -> 20% accent tint) via GradientDrawable on the card content; card colour transparent. Untested visually.
+- M6e: while streaming (st_streaming) the status card uses a fixed green gradient (live_start/live_end, white text; separate dark values), ignoring dynamic colours.

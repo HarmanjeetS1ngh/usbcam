@@ -30,4 +30,6 @@
     <color name="uc_container">#1D2024</color>
     <color name="uc_cHigh">#282A2F</color>
     <color name="uc_cHighest">#33353A</color>
+    <color name="live_start">#063B20</color>
+    <color name="live_end">#12703D</color>
 </resources>
