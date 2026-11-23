@@ -17,7 +17,7 @@ Stop-Service -Name FrameServer -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 800
 $dest = Join-Path $env:ProgramFiles 'UsbCam\vcam'
 $dll = Join-Path $dest 'usbcam_vcam_src.dll'
-if (Test-Path $dll) { & "$env:SystemRoot\System32\regsvr32.exe" /u /s "$dll" }
+if (Test-Path $dll) { Start-Process -FilePath "$env:SystemRoot\System32\regsvr32.exe" -ArgumentList "/u /s `"$dll`"" -Wait }
 # in case the DLL was already gone: remove the registry entry directly
 Remove-Item 'HKLM:\SOFTWARE\Classes\CLSID\{6B1F5D3A-2C47-4E58-9A0B-3D7E41C8A5F2}' -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item $dest -Recurse -Force -ErrorAction SilentlyContinue

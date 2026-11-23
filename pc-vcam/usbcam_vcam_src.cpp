@@ -2,7 +2,9 @@
 // Loaded by Windows' Frame Server (LocalService). Reads the newest frame the feeder (usbcam_vcam.exe) wrote into shared
 // memory and hands it to Frame Server as NV12 / YUY2 / RGB32. Original code (no OBS / GPL code).
 #define WIN32_LEAN_AND_MEAN
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 #include <windows.h>
 #include <sddl.h>
 #include <mfapi.h>
@@ -21,6 +23,7 @@ static HMODULE g_mod = nullptr;
 static volatile LONG g_objects = 0;
 
 // stream category "capture" (PINNAME_CAPTURE), written out so we do not depend on ksmedia.h GUID definitions
+// IID of IKsControl (not defined by the headers we link)
 static const GUID kIID_IKsControl = { 0x28f54685, 0x06fd, 0x11d2, { 0xb2, 0x7a, 0x00, 0xa0, 0xc9, 0x22, 0x31, 0x96 } };
 static const GUID kPinCapture = { 0xfb6c4281, 0x0353, 0x11d1, { 0x90, 0x5f, 0x00, 0x00, 0xc0, 0xcc, 0x16, 0xba } };
 
@@ -479,6 +482,67 @@ STDMETHODIMP UsbCamStream::GetMediaSource(IMFMediaSource** pp) {
     return m_src->QueryInterface(IID_IMFMediaSource, (void**)pp);
 }
 
+// ---------------- IMFActivate wrapper: Frame Server creates the registered class and asks for IMFActivate ----------------
+class Activator : public IMFActivate {
+public:
+    Activator() { InterlockedIncrement(&g_objects); MFCreateAttributes(&m_a, 0); }
+    ~Activator() { if (m_a) m_a->Release(); InterlockedDecrement(&g_objects); }
+    STDMETHODIMP QueryInterface(REFIID riid, void** ppv) override {
+        if (!ppv) return E_POINTER;
+        if (riid == IID_IUnknown || riid == IID_IMFActivate || riid == IID_IMFAttributes) { *ppv = static_cast<IMFActivate*>(this); AddRef(); return S_OK; }
+        *ppv = nullptr; return E_NOINTERFACE;
+    }
+    STDMETHODIMP_(ULONG) AddRef() override { return (ULONG)InterlockedIncrement(&m_ref); }
+    STDMETHODIMP_(ULONG) Release() override { LONG r = InterlockedDecrement(&m_ref); if (r == 0) delete this; return (ULONG)r; }
+    // IMFActivate
+    STDMETHODIMP ActivateObject(REFIID riid, void** ppv) override {
+        if (!ppv) return E_POINTER;
+        *ppv = nullptr;
+        UsbCamSource* s = new (std::nothrow) UsbCamSource();
+        if (!s) return E_OUTOFMEMORY;
+        HRESULT hr = s->Init();
+        if (SUCCEEDED(hr)) hr = s->QueryInterface(riid, ppv);
+        s->Release();
+        return hr;
+    }
+    STDMETHODIMP ShutdownObject() override { return S_OK; }
+    STDMETHODIMP DetachObject() override { return S_OK; }
+    // IMFAttributes: plain delegation to a standard attribute store
+    STDMETHODIMP GetItem(REFGUID k, PROPVARIANT* v) override { return m_a->GetItem(k, v); }
+    STDMETHODIMP GetItemType(REFGUID k, MF_ATTRIBUTE_TYPE* t) override { return m_a->GetItemType(k, t); }
+    STDMETHODIMP CompareItem(REFGUID k, REFPROPVARIANT v, BOOL* r) override { return m_a->CompareItem(k, v, r); }
+    STDMETHODIMP Compare(IMFAttributes* o, MF_ATTRIBUTES_MATCH_TYPE t, BOOL* r) override { return m_a->Compare(o, t, r); }
+    STDMETHODIMP GetUINT32(REFGUID k, UINT32* v) override { return m_a->GetUINT32(k, v); }
+    STDMETHODIMP GetUINT64(REFGUID k, UINT64* v) override { return m_a->GetUINT64(k, v); }
+    STDMETHODIMP GetDouble(REFGUID k, double* v) override { return m_a->GetDouble(k, v); }
+    STDMETHODIMP GetGUID(REFGUID k, GUID* v) override { return m_a->GetGUID(k, v); }
+    STDMETHODIMP GetStringLength(REFGUID k, UINT32* n) override { return m_a->GetStringLength(k, n); }
+    STDMETHODIMP GetString(REFGUID k, LPWSTR b, UINT32 n, UINT32* l) override { return m_a->GetString(k, b, n, l); }
+    STDMETHODIMP GetAllocatedString(REFGUID k, LPWSTR* b, UINT32* l) override { return m_a->GetAllocatedString(k, b, l); }
+    STDMETHODIMP GetBlobSize(REFGUID k, UINT32* n) override { return m_a->GetBlobSize(k, n); }
+    STDMETHODIMP GetBlob(REFGUID k, UINT8* b, UINT32 n, UINT32* l) override { return m_a->GetBlob(k, b, n, l); }
+    STDMETHODIMP GetAllocatedBlob(REFGUID k, UINT8** b, UINT32* n) override { return m_a->GetAllocatedBlob(k, b, n); }
+    STDMETHODIMP GetUnknown(REFGUID k, REFIID r, LPVOID* v) override { return m_a->GetUnknown(k, r, v); }
+    STDMETHODIMP SetItem(REFGUID k, REFPROPVARIANT v) override { return m_a->SetItem(k, v); }
+    STDMETHODIMP DeleteItem(REFGUID k) override { return m_a->DeleteItem(k); }
+    STDMETHODIMP DeleteAllItems() override { return m_a->DeleteAllItems(); }
+    STDMETHODIMP SetUINT32(REFGUID k, UINT32 v) override { return m_a->SetUINT32(k, v); }
+    STDMETHODIMP SetUINT64(REFGUID k, UINT64 v) override { return m_a->SetUINT64(k, v); }
+    STDMETHODIMP SetDouble(REFGUID k, double v) override { return m_a->SetDouble(k, v); }
+    STDMETHODIMP SetGUID(REFGUID k, REFGUID v) override { return m_a->SetGUID(k, v); }
+    STDMETHODIMP SetString(REFGUID k, LPCWSTR v) override { return m_a->SetString(k, v); }
+    STDMETHODIMP SetBlob(REFGUID k, const UINT8* b, UINT32 n) override { return m_a->SetBlob(k, b, n); }
+    STDMETHODIMP SetUnknown(REFGUID k, IUnknown* u) override { return m_a->SetUnknown(k, u); }
+    STDMETHODIMP LockStore() override { return m_a->LockStore(); }
+    STDMETHODIMP UnlockStore() override { return m_a->UnlockStore(); }
+    STDMETHODIMP GetCount(UINT32* n) override { return m_a->GetCount(n); }
+    STDMETHODIMP GetItemByIndex(UINT32 i, GUID* k, PROPVARIANT* v) override { return m_a->GetItemByIndex(i, k, v); }
+    STDMETHODIMP CopyAllItems(IMFAttributes* d) override { return m_a->CopyAllItems(d); }
+private:
+    LONG m_ref = 1;
+    IMFAttributes* m_a = nullptr;
+};
+
 // ---------------- COM plumbing ----------------
 class Factory : public IClassFactory {
 public:
@@ -493,6 +557,13 @@ public:
         if (!ppv) return E_POINTER;
         *ppv = nullptr;
         if (outer) return CLASS_E_NOAGGREGATION;
+        if (riid == IID_IMFActivate || riid == IID_IMFAttributes) {
+            Activator* a = new (std::nothrow) Activator();
+            if (!a) return E_OUTOFMEMORY;
+            HRESULT hr = a->QueryInterface(riid, ppv);
+            a->Release();
+            return hr;
+        }
         UsbCamSource* s = new (std::nothrow) UsbCamSource();
         if (!s) return E_OUTOFMEMORY;
         HRESULT hr = s->Init();

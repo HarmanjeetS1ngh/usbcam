@@ -37,8 +37,8 @@ try {
     Start-Sleep -Milliseconds 500
     Copy-Item (Join-Path $Source 'usbcam_vcam_src.dll') $dest -Force
     $dll = Join-Path $dest 'usbcam_vcam_src.dll'
-    & "$env:SystemRoot\System32\regsvr32.exe" /s "$dll"
-    if ($LASTEXITCODE -ne 0) { throw "regsvr32 failed with code $LASTEXITCODE" }
+    $rp = Start-Process -FilePath "$env:SystemRoot\System32\regsvr32.exe" -ArgumentList "/s `"$dll`"" -Wait -PassThru
+    if ($rp.ExitCode -ne 0) { throw "regsvr32 failed with code $($rp.ExitCode)" }
     $key = 'HKLM:\SOFTWARE\Classes\CLSID\{6B1F5D3A-2C47-4E58-9A0B-3D7E41C8A5F2}\InprocServer32'
     if (-not (Test-Path $key)) { throw 'registration did not show up in the registry' }
     Write-Host ""
