@@ -71,7 +71,7 @@
     <LinearLayout android:id="@+id/adv_body" android:layout_width="match_parent" android:layout_height="wrap_content"
         android:orientation="vertical" android:visibility="gone" android:paddingStart="@dimen/space_4" android:paddingEnd="@dimen/space_4" android:paddingBottom="@dimen/space_8">
         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/appearance"
-            android:layout_marginTop="@dimen/space_8" android:textAppearance="?attr/textAppearanceTitleMedium" android:textColor="?attr/colorOnSurface" />
+            android:layout_marginTop="@dimen/space_8" android:textAppearance="?attr/textAppearanceTitleSmall" android:textColor="?attr/colorPrimary" />
         <com.google.android.material.button.MaterialButtonToggleGroup android:id="@+id/theme_group"
             android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/space_8" android:layout_marginBottom="@dimen/space_8"
             app:singleSelection="true" app:selectionRequired="true">
@@ -80,32 +80,6 @@
             <com.google.android.material.button.MaterialButton android:id="@+id/theme_dark" style="?attr/materialButtonOutlinedStyle" app:backgroundTint="@color/seg_bg" android:textColor="@color/seg_text" app:iconTint="@color/seg_text" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:minHeight="@dimen/touch_min" android:text="@string/theme_dark" />
         </com.google.android.material.button.MaterialButtonToggleGroup>
 
-        <LinearLayout android:id="@+id/row_guard" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:minHeight="56dp" android:orientation="horizontal" android:gravity="center_vertical"
-            android:paddingTop="@dimen/space_8" android:paddingBottom="@dimen/space_8">
-            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/protect_title"
-                    android:textAppearance="?attr/textAppearanceTitleMedium" android:textColor="?attr/colorOnSurface" />
-                <TextView android:id="@+id/guard_support" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/protect_support"
-                    android:textAppearance="?attr/textAppearanceBodyMedium" android:textColor="?attr/colorOnSurfaceVariant" />
-            </LinearLayout>
-            <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/sw_guard"
-                android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:layout_marginStart="@dimen/space_16" android:contentDescription="@string/protect_title" />
-        </LinearLayout>
-        <LinearLayout android:id="@+id/row_ll" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:minHeight="56dp" android:orientation="horizontal" android:gravity="center_vertical"
-            android:paddingTop="@dimen/space_8" android:paddingBottom="@dimen/space_8">
-            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/fast_title"
-                    android:textAppearance="?attr/textAppearanceTitleMedium" android:textColor="?attr/colorOnSurface" />
-                <TextView android:id="@+id/ll_support" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/fast_support"
-                    android:textAppearance="?attr/textAppearanceBodyMedium" android:textColor="?attr/colorOnSurfaceVariant" />
-            </LinearLayout>
-            <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/sw_ll"
-                android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:layout_marginStart="@dimen/space_16" android:contentDescription="@string/fast_title" />
-        </LinearLayout>
         <LinearLayout android:id="@+id/row_dyn" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:minHeight="56dp" android:orientation="horizontal" android:gravity="center_vertical"
             android:paddingTop="@dimen/space_8" android:paddingBottom="@dimen/space_8">
@@ -119,6 +93,21 @@
                 android:layout_width="wrap_content" android:layout_height="wrap_content"
                 android:layout_marginStart="@dimen/space_16" android:contentDescription="@string/dyn_title" />
         </LinearLayout>
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/adv_group_stream"
+            android:layout_marginTop="@dimen/space_24" android:textAppearance="?attr/textAppearanceTitleSmall" android:textColor="?attr/colorPrimary" />
+        <LinearLayout android:id="@+id/row_ll" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:minHeight="56dp" android:orientation="horizontal" android:gravity="center_vertical"
+            android:paddingTop="@dimen/space_8" android:paddingBottom="@dimen/space_8">
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/fast_title"
+                    android:textAppearance="?attr/textAppearanceTitleMedium" android:textColor="?attr/colorOnSurface" />
+                <TextView android:id="@+id/ll_support" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/fast_support"
+                    android:textAppearance="?attr/textAppearanceBodyMedium" android:textColor="?attr/colorOnSurfaceVariant" />
+            </LinearLayout>
+            <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/sw_ll"
+                android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/space_16" android:contentDescription="@string/fast_title" />
+        </LinearLayout>
         <com.google.android.material.textfield.TextInputLayout android:id="@+id/til_br"
             style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
             android:layout_width="match_parent" android:layout_height="wrap_content"
@@ -127,6 +116,21 @@
                 android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:minHeight="@dimen/touch_min" android:inputType="none" />
         </com.google.android.material.textfield.TextInputLayout>
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/adv_group_safety"
+            android:layout_marginTop="@dimen/space_24" android:textAppearance="?attr/textAppearanceTitleSmall" android:textColor="?attr/colorPrimary" />
+        <LinearLayout android:id="@+id/row_guard" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:minHeight="56dp" android:orientation="horizontal" android:gravity="center_vertical"
+            android:paddingTop="@dimen/space_8" android:paddingBottom="@dimen/space_8">
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/protect_title"
+                    android:textAppearance="?attr/textAppearanceTitleMedium" android:textColor="?attr/colorOnSurface" />
+                <TextView android:id="@+id/guard_support" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/protect_support"
+                    android:textAppearance="?attr/textAppearanceBodyMedium" android:textColor="?attr/colorOnSurfaceVariant" />
+            </LinearLayout>
+            <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/sw_guard"
+                android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/space_16" android:contentDescription="@string/protect_title" />
+        </LinearLayout>
         <com.google.android.material.button.MaterialButton android:id="@+id/btn_reset" style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="@dimen/space_8"
             android:minHeight="@dimen/touch_min" android:text="@string/reset_defaults" />

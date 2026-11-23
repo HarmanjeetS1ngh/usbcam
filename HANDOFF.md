@@ -151,3 +151,8 @@ The user prefers direct, honest feedback, and narrow answers over long lists. Te
 - Spacing: extra bottom padding under Picture settings (gap before the divider) and inside Advanced; gap under the Appearance buttons. Appearance is first in Advanced.
 - Copy: Picture size -> Resolution, Smoothness -> FPS, Picture data rate -> Bitrate, "frames per second" -> "fps" everywhere (summary, drop-down items, Device info), new Protect the phone text.
 - Untested: all of the above on device; focus behaviour of the exposed drop-downs on Android versions other than the S22's.
+
+## M6l (UI only, NOT COMPILED)
+- ISO chip icon is now the letters "ISO" (stroke vector, same style as WB) instead of the exposure +/- glyph.
+- Advanced regrouped: Appearance (theme buttons + wallpaper colours) / Streaming (fastest response, bitrate) / Safety (protect the phone) / reset. Same view ids, no Kotlin change.
+- Protect the phone text shortened.

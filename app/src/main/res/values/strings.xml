@@ -72,7 +72,9 @@
 
     <!-- protection / advanced / info -->
     <string name="protect_title">Protect the phone</string>
-    <string name="protect_support">Keeps your phone safe. If it gets warm, the picture quality is lowered a little to cool it down. If it gets too hot or the battery is very low, streaming stops.</string>
+    <string name="protect_support">Lowers quality when the phone warms up and stops before it overheats or runs flat.</string>
+    <string name="adv_group_stream">Streaming</string>
+    <string name="adv_group_safety">Safety</string>
     <string name="advanced">Advanced</string>
     <string name="device_info">Device info</string>
     <string name="state_expanded">Expanded</string>
