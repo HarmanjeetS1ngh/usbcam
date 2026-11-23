@@ -80,6 +80,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statusIcon: ImageView
     private lateinit var statusContent: View
     private var gradKey = 0L
+    private var lastIcon = 0
     private lateinit var statusTitle: TextView
     private lateinit var statusText: TextView
     private lateinit var chipBattery: Chip
@@ -450,7 +451,7 @@ class MainActivity : AppCompatActivity() {
             s.guardStage == 2 -> UiState(R.string.st_hot, R.string.st_hot_text, R.drawable.ic_warning, errBg, errFg, 0)
             !s.camEnabled -> UiState(R.string.st_off, R.string.st_off_text, R.drawable.ic_videocam_off, MR.attr.colorSurfaceContainerHighest, MR.attr.colorOnSurface, 0)
             low.contains("denied") || low.contains("fail") || low.contains("error") -> UiState(R.string.st_problem, R.string.st_problem_text, R.drawable.ic_warning, errBg, errFg, 2)
-            live -> UiState(R.string.st_streaming, R.string.st_streaming_text, R.drawable.ic_sensors, MR.attr.colorTertiaryContainer, MR.attr.colorOnTertiaryContainer, 0)
+            live -> UiState(R.string.st_streaming, R.string.st_streaming_text, R.drawable.ic_sensors_live, MR.attr.colorTertiaryContainer, MR.attr.colorOnTertiaryContainer, 0)
             low.contains("stream") || low.contains("wait") || low.contains("listen") || low.contains("ready") || low.contains("idle") || low.contains("control") ->
                 UiState(R.string.st_waiting, R.string.st_waiting_text, R.drawable.ic_videocam, MR.attr.colorPrimaryContainer, MR.attr.colorOnPrimaryContainer, 0)
             else -> UiState(R.string.st_starting, R.string.st_starting_text, R.drawable.ic_videocam, MR.attr.colorSurfaceContainerHigh, MR.attr.colorOnSurface, 0)
@@ -472,7 +473,11 @@ class MainActivity : AppCompatActivity() {
             statusCard.setCardBackgroundColor(Color.TRANSPARENT)
             statusContent.background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(bg, end)).apply { cornerRadius = statusCard.radius }
         }
-        statusIcon.setImageResource(st.icon)
+        if (st.icon != lastIcon) { // only when it changes, so the live animation is not restarted every second
+            lastIcon = st.icon
+            statusIcon.setImageResource(st.icon)
+            (statusIcon.drawable as? android.graphics.drawable.Animatable)?.start()
+        }
         statusIcon.imageTintList = ColorStateList.valueOf(fg)
         statusTitle.setText(st.title); statusTitle.setTextColor(fg)
         val warm = s.guardStage == 1 && st.action == 0 && s.camEnabled

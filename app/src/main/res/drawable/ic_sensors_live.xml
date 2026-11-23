@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android" android:drawable="@drawable/ic_sensors_paths">
+    <target android:name="inner" android:animation="@animator/live_wave_inner" />
+    <target android:name="outer" android:animation="@animator/live_wave_outer" />
+</animated-vector>
