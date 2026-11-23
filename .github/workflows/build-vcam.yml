@@ -1,5 +1,7 @@
 name: build-vcam
 on: [push, workflow_dispatch]
+permissions:
+  contents: write
 jobs:
   vcam:
     runs-on: windows-latest
@@ -22,7 +24,9 @@ jobs:
           $ff = ((Get-ChildItem deps -Directory -Filter 'ffmpeg-*').FullName) -replace '\\','/'
           $sdl = ((Get-ChildItem deps -Directory -Filter 'SDL2-*').FullName) -replace '\\','/'
           $imgui = ((Get-ChildItem deps -Directory -Filter 'imgui-*').FullName) -replace '\\','/'
-          cmake -S pc-vcam -B build-vcam -A x64 "-DFFMPEG_DIR=$ff" "-DSDL2_DIR=$sdl" "-DIMGUI_DIR=$imgui"
+          # build number = run number; the desktop app compares it with the newest desktop-<n> release
+          $vname = ((Select-String -Path gradle.properties -Pattern '^appVersionName=').Line -split '=')[1].Trim()
+          cmake -S pc-vcam -B build-vcam -A x64 "-DFFMPEG_DIR=$ff" "-DSDL2_DIR=$sdl" "-DIMGUI_DIR=$imgui" "-DUCV_BUILD=${{ github.run_number }}" "-DUCV_VERSION=$vname"
           if ($LASTEXITCODE -ne 0) { throw 'cmake configure failed' }
           cmake --build build-vcam --config Release
           if ($LASTEXITCODE -ne 0) { throw 'cmake build failed' }
@@ -38,3 +42,14 @@ jobs:
         with:
           name: usbcam-vcam
           path: out
+      # publish the desktop app as a GitHub Release (tag desktop-<run number>): the app checks these for updates.
+      # A failure here must not fail the build. The Android app only looks at build-<n> tags, so the two never mix.
+      - name: Publish release for in-app updates
+        continue-on-error: true
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $vname = ((Select-String -Path gradle.properties -Pattern '^appVersionName=').Line -split '=')[1].Trim()
+          Compress-Archive -Path out\* -DestinationPath UsbCam-desktop.zip -Force
+          gh release create "desktop-${{ github.run_number }}" UsbCam-desktop.zip --title "UsbCam for Windows $vname (build ${{ github.run_number }})" --notes-file RELEASE_NOTES_DESKTOP.md --target "${{ github.sha }}" --latest=false

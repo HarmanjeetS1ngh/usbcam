@@ -22,12 +22,20 @@ target_link_libraries(usbcam_vcam PRIVATE avcodec avutil ws2_32 mfplat mf mfuuid
 # 3) the UsbCam app: window with live preview + controls + the virtual camera in one program (needs SDL2 and Dear ImGui)
 if(IMGUI_DIR AND SDL2_DIR)
   enable_language(RC)
-  add_executable(UsbCam WIN32 usbcam_vcam.cpp usbcam_gui.inc usbcam_icon.h usbcam.rc
+  # version shown in the update check: build = Actions run number (the release is tagged desktop-<build>), version = appVersionName
+  if(NOT UCV_BUILD)
+    set(UCV_BUILD 0)
+  endif()
+  if(NOT UCV_VERSION)
+    set(UCV_VERSION "dev")
+  endif()
+  configure_file(usbcam_ver.h.in ${CMAKE_CURRENT_BINARY_DIR}/usbcam_ver.h @ONLY)
+  add_executable(UsbCam WIN32 usbcam_vcam.cpp usbcam_gui.inc usbcam_update.inc usbcam_icon.h usbcam.rc
     ${IMGUI_DIR}/imgui.cpp ${IMGUI_DIR}/imgui_draw.cpp ${IMGUI_DIR}/imgui_tables.cpp ${IMGUI_DIR}/imgui_widgets.cpp
     ${IMGUI_DIR}/backends/imgui_impl_sdl2.cpp ${IMGUI_DIR}/backends/imgui_impl_sdlrenderer2.cpp)
   target_compile_definitions(UsbCam PRIVATE UCV_GUI _CRT_SECURE_NO_WARNINGS NOMINMAX)
-  target_include_directories(UsbCam PRIVATE ${FFMPEG_DIR}/include ${SDL2_DIR}/include ${IMGUI_DIR} ${IMGUI_DIR}/backends ${CMAKE_CURRENT_SOURCE_DIR})
+  target_include_directories(UsbCam PRIVATE ${FFMPEG_DIR}/include ${SDL2_DIR}/include ${IMGUI_DIR} ${IMGUI_DIR}/backends ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR})
   target_link_directories(UsbCam PRIVATE ${FFMPEG_DIR}/lib ${SDL2_DIR}/lib/x64)
-  target_link_libraries(UsbCam PRIVATE avcodec avutil SDL2 ws2_32 mfplat mf mfuuid mfsensorgroup strmiids uuid ole32 pdh gdi32 user32 advapi32 shell32)
+  target_link_libraries(UsbCam PRIVATE avcodec avutil SDL2 ws2_32 mfplat mf mfuuid mfsensorgroup strmiids uuid ole32 pdh gdi32 user32 advapi32 shell32 winhttp bcrypt)
   target_link_options(UsbCam PRIVATE /ENTRY:mainCRTStartup)
 endif()

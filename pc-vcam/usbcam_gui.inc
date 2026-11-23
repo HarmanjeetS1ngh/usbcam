@@ -63,7 +63,7 @@ static bool jparse_all(const std::string& txt, JV& v) { const char* p = txt.c_st
 
 // ---------- saved settings (%APPDATA%\UsbCam\app.ini) ----------
 struct GuiSettings {
-    bool vcam = true, mirror = false, phone_default = true, light = false, preview = true;
+    bool vcam = true, mirror = false, phone_default = true, light = false, preview = true, auto_update = true;
     int tsz = 0;   // text size level 0..3 = 100/125/150/200 %
     std::string cam; int w = 0, h = 0, fps = 0, br = 0;   // br in bit/s, 0 = automatic
 };
@@ -88,6 +88,7 @@ static void settings_load(GuiSettings& s) {
         else if (k == "phone_default") s.phone_default = v == "1";
         else if (k == "light") s.light = v == "1";
         else if (k == "preview") s.preview = v != "0";
+        else if (k == "auto_update") s.auto_update = v != "0";   // no switch in the window: set auto_update=0 in app.ini to stop the automatic check
         else if (k == "tsz") s.tsz = std::max(0, std::min(3, atoi(v.c_str())));
         else if (k == "cam") s.cam = v;
         else if (k == "w") s.w = atoi(v.c_str());
@@ -100,8 +101,8 @@ static void settings_load(GuiSettings& s) {
 static void settings_save(const GuiSettings& s) {
     FILE* f = fopen(settings_path().c_str(), "w");
     if (!f) return;
-    fprintf(f, "vcam=%d\nmirror=%d\nphone_default=%d\nlight=%d\npreview=%d\ntsz=%d\ncam=%s\nw=%d\nh=%d\nfps=%d\nbr=%d\n",
-            s.vcam ? 1 : 0, s.mirror ? 1 : 0, s.phone_default ? 1 : 0, s.light ? 1 : 0, s.preview ? 1 : 0, s.tsz, s.cam.c_str(), s.w, s.h, s.fps, s.br);
+    fprintf(f, "vcam=%d\nmirror=%d\nphone_default=%d\nlight=%d\npreview=%d\ntsz=%d\ncam=%s\nw=%d\nh=%d\nfps=%d\nbr=%d\nauto_update=%d\n",
+            s.vcam ? 1 : 0, s.mirror ? 1 : 0, s.phone_default ? 1 : 0, s.light ? 1 : 0, s.preview ? 1 : 0, s.tsz, s.cam.c_str(), s.w, s.h, s.fps, s.br, s.auto_update ? 1 : 0);
     fclose(f);
 }
 
@@ -198,6 +199,7 @@ static void commit_selection(GuiState& g) {
 #define DEG "\xC2\xB0"
 #include "usbcam_icon.h"
 #include "usbcam_lucide.h"
+#include "usbcam_update.inc"   // update check from GitHub Releases (logic only; the dialog is drawn below)
 
 // Every text/background pair below is >= 4.5:1 and every control outline >= 3:1 (WCAG AA), in both themes.
 struct Pal {
@@ -247,6 +249,7 @@ static void apply_theme(const Pal& p) {
     c[ImGuiCol_ScrollbarBg] = ImVec4(0, 0, 0, 0); c[ImGuiCol_ScrollbarGrab] = p.outl;
     c[ImGuiCol_ScrollbarGrabHovered] = p.onVar; c[ImGuiCol_ScrollbarGrabActive] = p.onSurf;
     c[ImGuiCol_NavHighlight] = p.pri;
+    c[ImGuiCol_ModalWindowDimBg] = ImVec4(0, 0, 0, 0.55f);
 }
 
 // ---------- text helpers ----------
@@ -518,6 +521,147 @@ static void Ico(ImDrawList* dl, int i, ImVec2 c, int size, ImU32 col) {
     dl->AddImage((ImTextureID)t, ImVec2(x, y), ImVec2(x + n, y + n), ImVec2(0, 0), ImVec2(1, 1), col);
 }
 
+// same as Ico but turned by `ang` radians (the refresh icon spins while the update check runs)
+static void IcoRot(ImDrawList* dl, int i, ImVec2 c, int size, ImU32 col, float ang) {
+    SDL_Texture* t = (i >= 0 && i < IC_N) ? g_ic[size][i] : nullptr;
+    if (!t) return;
+    float h = (float)g_icpx[size] * 0.5f, cs = cosf(ang), sn = sinf(ang);
+    auto P = [&](float x, float y) { return ImVec2(c.x + x * cs - y * sn, c.y + x * sn + y * cs); };
+    dl->AddImageQuad((ImTextureID)t, P(-h, -h), P(h, -h), P(h, h), P(-h, h), ImVec2(0, 0), ImVec2(1, 0), ImVec2(1, 1), ImVec2(0, 1), col);
+}
+
+// ---------- update dialog, button helpers and the message pill ----------
+// 40dp pill button: filled = primary action, otherwise tonal. Returns true when pressed.
+static bool PillButton(const char* id, const char* label, bool filled) {
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const float h = S(40);
+    ImVec2 ts = TSize(f_label, label);
+    float w = std::max(S(88), ts.x + S(48));
+    ImVec2 p = ImGui::GetCursorScreenPos(), q(p.x + w, p.y + h);
+    bool pr = ImGui::InvisibleButton(id, ImVec2(w, h));
+    bool hov = ImGui::IsItemHovered(), act = ImGui::IsItemActive();
+    if (hov) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+    ImVec4 bg = filled ? g_pal.pri : g_pal.secC, fg = filled ? g_pal.onPri : g_pal.onSecC;
+    dl->AddRectFilled(p, q, Cu(hov ? Mix(bg, fg, act ? 0.16f : 0.10f) : bg), h * 0.5f);
+    DText(dl, f_label, ImVec2(p.x + (w - ts.x) * 0.5f, p.y + (h - ts.y) * 0.5f), Cu(fg), label);
+    FocusRing(dl, p, q, h * 0.5f);
+    return pr;
+}
+static float PillWidth(const char* label) { return std::max(S(88), TSize(f_label, label).x + S(48)); }
+// 6dp progress bar across the available width; frac < 0 = indeterminate (a segment slides across)
+static void UpBar(float frac) {
+    ImVec2 p = ImGui::GetCursorScreenPos();
+    float w = ImGui::GetContentRegionAvail().x, h = S(6);
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    dl->AddRectFilled(p, ImVec2(p.x + w, p.y + h), Cu(Mix(g_pal.high, g_pal.onVar, 0.30f)), h * 0.5f);
+    if (frac >= 0.0f) {
+        dl->AddRectFilled(p, ImVec2(p.x + std::max(h, w * std::min(1.0f, frac)), p.y + h), Cu(g_pal.pri), h * 0.5f);
+    } else {
+        float seg = w * 0.3f, x = (w + seg) * fmodf((float)ImGui::GetTime() * 0.8f, 1.0f) - seg;
+        float a = std::max(0.0f, x), b = std::min(w, x + seg);
+        if (b > a) dl->AddRectFilled(ImVec2(p.x + a, p.y), ImVec2(p.x + b, p.y + h), Cu(g_pal.pri), h * 0.5f);
+    }
+    ImGui::Dummy(ImVec2(w, h));
+}
+// modal dialog for the update: release notes + Later / Update; the same dialog shows the download and any failure
+static void up_dialog(float ww, float wh) {
+    int st = g_up.st.load();
+    if (g_up.open_req.exchange(false) && st == UP_AVAIL) ImGui::OpenPopup("##upd");
+    ImGui::SetNextWindowPos(ImVec2(ww * 0.5f, wh * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+    float dw = std::min(S(460), ww - S(32));
+    ImGui::SetNextWindowSizeConstraints(ImVec2(dw, 0), ImVec2(dw, std::max(S(200), wh - S(32))));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, S(24));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(S(24), S(24)));
+    ImGui::PushStyleVar(ImGuiStyleVar_PopupBorderSize, 1.0f);
+    ImGui::PushStyleColor(ImGuiCol_Border, g_pal.outV);
+    bool open = ImGui::BeginPopupModal("##upd", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+    ImGui::PopStyleColor();
+    ImGui::PopStyleVar(3);
+    if (!open) return;
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
+    UpInfo info; std::string err;
+    { std::lock_guard<std::mutex> l(g_up.mu); info = g_up.info; err = g_up.err; }
+    st = g_up.st.load();
+    const bool esc = ImGui::IsKeyPressed(ImGuiKey_Escape, false);
+
+    std::string nm = info.name;
+    if (nm.compare(0, 19, "UsbCam for Windows ") == 0) nm = nm.substr(19);
+    if (nm.empty()) { char b[32]; snprintf(b, sizeof b, "Build %lld", info.build); nm = b; }
+    if (info.size > 0) nm += SEP + up_size_text(info.size);
+    const char* title = st == UP_DOWNLOADING ? "Downloading update" : st == UP_APPLYING ? "Installing update" : st == UP_FAILED ? "Update failed" : "Update available";
+    CardHeader(st == UP_APPLYING ? IC_REFRESH : (st == UP_FAILED ? IC_ALERT : IC_DOWNLOAD), title, nm.c_str(), g_pal.onVar, nullptr, nullptr);
+    Rule();
+
+    auto buttons = [&](const char* a, const char* b, bool* pa, bool* pb) {   // right-aligned: [a] [b]; b is the primary action
+        float wa = a ? PillWidth(a) : 0.0f, wb = b ? PillWidth(b) : 0.0f, gap = (a && b) ? S(8) : 0.0f;
+        float x0 = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - (wa + gap + wb);
+        ImGui::SetCursorPosX(x0);
+        if (a) *pa = PillButton("##a", a, false);
+        if (a && b) ImGui::SameLine(0, gap);
+        if (b) *pb = PillButton("##b", b, true);
+    };
+    bool ba = false, bb = false;
+    if (st == UP_AVAIL) {
+        std::string notes = up_plain_notes(info.notes);
+        if (notes.empty()) notes = "No release notes were provided.";
+        float avail = ImGui::GetContentRegionAvail().x;
+        float nh = std::min(TSize(f_body, notes.c_str(), avail).y + S(4), S(220));
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
+        ImGui::BeginChild("##notes", ImVec2(0, nh), ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground);
+        TextC(f_body, g_pal.onSurf, notes.c_str(), true);
+        ImGui::EndChild();
+        ImGui::PopStyleColor();
+        Gap(GUT);
+        TextC(f_small, g_pal.onVar, "UsbCam closes and reopens by itself. The virtual camera is off for a few seconds.", true);
+        Gap(20);
+        buttons("Later", "Update", &ba, &bb);
+        if (ba || esc) { g_up.dismissed = info.build; ImGui::CloseCurrentPopup(); }
+        if (bb) up_download_async();
+    } else if (st == UP_DOWNLOADING) {
+        int pc = g_up.pct.load();
+        char pb[24]; if (pc >= 0) snprintf(pb, sizeof pb, "%d %%", pc); else pb[0] = 0;
+        float avail = ImGui::GetContentRegionAvail().x;
+        ImVec2 p = ImGui::GetCursorScreenPos();
+        ImVec2 l1 = TSize(f_body, pc >= 0 ? "Downloading" : "Getting the update ready..."), v1 = TSize(f_label, pb);
+        DText(ImGui::GetWindowDrawList(), f_body, ImVec2(p.x, p.y), Cu(g_pal.onSurf), pc >= 0 ? "Downloading" : "Getting the update ready...");
+        if (pc >= 0) DText(ImGui::GetWindowDrawList(), f_label, ImVec2(p.x + avail - v1.x, p.y + (l1.y - v1.y) * 0.5f), Cu(g_pal.onSurf), pb);
+        ImGui::Dummy(ImVec2(avail, l1.y));
+        Gap(8);
+        UpBar(pc >= 0 ? pc / 100.0f : -1.0f);
+        Gap(20);
+        buttons(nullptr, "Cancel", &ba, &bb);
+        if (bb || esc) g_up.cancel = true;
+    } else if (st == UP_APPLYING) {
+        TextC(f_body, g_pal.onSurf, "UsbCam is restarting to finish the update.", true);
+        Gap(GUT);
+        UpBar(-1.0f);
+    } else if (st == UP_FAILED) {
+        std::string m = "Couldn't download the update: " + err + ".";
+        TextC(f_body, g_pal.err, m.c_str(), true);
+        Gap(20);
+        buttons("Close", "Try again", &ba, &bb);
+        if (ba || esc) { g_up.st = UP_AVAIL; g_up.dismissed = info.build; ImGui::CloseCurrentPopup(); }
+        if (bb) up_download_async();
+    } else {
+        ImGui::CloseCurrentPopup();   // nothing to show (state changed)
+    }
+    ImGui::PopStyleVar();
+    ImGui::EndPopup();
+}
+// short message pill at the bottom of the stage (inverse colours), fades in and out
+static void up_snack(float cx, float yb, float maxw, const std::string& msg, double age, double life) {
+    float a = (float)std::min(1.0, std::min(age / 0.15, (life - age) / 0.30));
+    if (a <= 0.0f) return;
+    float tw = std::min(TSize(f_label, msg.c_str()).x, maxw);
+    float th = CenterWrap(nullptr, f_label, 0, 0, 0, msg, maxw);
+    float w = tw + S(40), h = th + S(24);
+    ImVec4 bgc = g_pal.onSurf, fgc = g_pal.surf; bgc.w = a; fgc.w = a;
+    ImDrawList* dl = ImGui::GetForegroundDrawList();
+    float y = yb - h - S(24) * (2.0f - a);   // rises 24dp while it appears
+    dl->AddRectFilled(ImVec2(cx - w * 0.5f, y), ImVec2(cx + w * 0.5f, y + h), Cu(bgc), std::min(h * 0.5f, S(20)));
+    CenterWrap(dl, f_label, cx, y + S(12), Cu(fgc), msg, maxw);
+}
+
 template <class F> static auto imrender(F f, ImDrawData* d, SDL_Renderer* r, int) -> decltype(f(d, r), void()) { f(d, r); }
 template <class F> static void imrender(F f, ImDrawData* d, SDL_Renderer*, long) { f(d); }
 
@@ -633,6 +777,9 @@ static void gui_loop() {
     bool have_frame = false, running = true;
     StatusLatch latch;
     g_gui_active = true;
+    { std::string r = up_read_result(); if (!r.empty()) up_toast(r); }   // "Updated to ..." / "The update did not finish"
+    int64_t next_auto = now_us() + 6000000;   // first automatic update check 6 s after start, then every 6 hours
+    std::string snack; double snack_t0 = -100.0;
 
     while (running && g_run) {
         SDL_Event e;
@@ -640,6 +787,8 @@ static void gui_loop() {
             ImGui_ImplSDL2_ProcessEvent(&e);
             if (e.type == SDL_QUIT) running = false;
         }
+        if (g_up.quit.load()) running = false;   // the update script takes over once this program has exited
+        if (gs.s.auto_update && UCV_BUILD > 0 && now_us() >= next_auto) { next_auto = now_us() + 6LL * 3600 * 1000000; up_check_async(false); }
         bool mini = (SDL_GetWindowFlags(win) & SDL_WINDOW_MINIMIZED) != 0;
         g_gui_active = !mini;
         if (mini) { SDL_Delay(150); continue; }
@@ -783,13 +932,39 @@ static void gui_loop() {
             if (tbtn("##tplus", bpl, gs.s.tsz < 3, "Larger text", "A+", false)) gs.s.tsz++;
             if (tbtn("##tminus", bmi, gs.s.tsz > 0, "Smaller text", "A-", false)) gs.s.tsz--;
 
+            // updates: refresh icon (spins while checking); turns into a filled download button when a newer build is waiting
+            ImVec2 bup(bmi.x - bs - 8 * sc, bp.y);
+            {
+                int ust = g_up.st.load();
+                bool uav = ust == UP_AVAIL, ubusy = ust == UP_CHECKING || ust == UP_DOWNLOADING || ust == UP_APPLYING;
+                ImGui::SetCursorScreenPos(bup);
+                bool upr = ImGui::InvisibleButton("##update", ImVec2(bs, bs));
+                bool uhv = ImGui::IsItemHovered();
+                if (uhv) {
+                    std::string tip;
+                    if (uav) { std::lock_guard<std::mutex> l(g_up.mu); char b[64]; snprintf(b, sizeof b, "Update available (build %lld)", g_up.info.build); tip = b; }
+                    else if (ust == UP_CHECKING) tip = "Checking for updates...";
+                    else if (ubusy) tip = "Updating...";
+                    else tip = "Check for updates" SEP "UsbCam " + up_version_text();
+                    ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+                    ImGui::PushFont(f_small); ImGui::SetTooltip("%s", tip.c_str()); ImGui::PopFont();
+                }
+                ImVec4 ubg = uav ? g_pal.pri : g_pal.secC, ufg = uav ? g_pal.onPri : g_pal.onSecC;
+                ImVec2 uc(bup.x + bs * 0.5f, bup.y + bs * 0.5f);
+                dl->AddCircleFilled(uc, bs * 0.5f, Cu(uhv && !ubusy ? Mix(ubg, ufg, 0.10f) : ubg), 32);
+                if (uav) Ico(dl, IC_DOWNLOAD, uc, IS_ROW, Cu(ufg));
+                else IcoRot(dl, IC_REFRESH, uc, IS_ROW, Cu(ufg), ust == UP_CHECKING ? (float)ImGui::GetTime() * 6.0f : 0.0f);
+                FocusRing(dl, bup, ImVec2(bup.x + bs, bup.y + bs), bs * 0.5f);
+                if (upr && !ubusy) { if (uav) g_up.open_req = true; else up_check_async(true); }
+            }
+
             // status chip, left of the theme button
             ImVec4 cbg = g_pal.high, cfg = g_pal.onSurf, cdot = g_pal.outl;
             if (kind == 1) { cbg = g_pal.okC; cfg = g_pal.onOkC; cdot = g_pal.ok; cdot.w = 0.55f + 0.45f * (0.5f + 0.5f * sinf((float)ImGui::GetTime() * 4.0f)); }
             else if (kind == 2) { cbg = g_pal.warnC; cfg = g_pal.onWarnC; cdot = g_pal.warn; }
             else if (kind == 3) { cbg = g_pal.errC; cfg = g_pal.onErrC; cdot = g_pal.err; }
             float cw = ChipWidth(title.c_str());
-            float room = bmi.x - 12 * sc - lx;
+            float room = bup.x - 12 * sc - lx;
             std::string ct = title;
             if (cw > room && ct.size() > 14) ct = ct.substr(0, 12) + "...";
             ChipAt(dl, lx + ChipWidth(ct.c_str()), cy, ct.c_str(), cbg, cfg, cdot);
@@ -954,6 +1129,10 @@ static void gui_loop() {
         Gap(GUT);
         ImGui::PopStyleVar();
         ImGui::End();
+
+        up_dialog((float)ww, (float)wh);
+        { std::string m; if (up_take_toast(m)) { snack = m; snack_t0 = ImGui::GetTime(); } }
+        if (!snack.empty() && ImGui::GetTime() - snack_t0 < 4.5) up_snack((sx0 + sx1) * 0.5f, sy1, std::min(520 * sc, sx1 - sx0 - 64 * sc), snack, ImGui::GetTime() - snack_t0, 4.5);
 
         // ----- status bar: hint on the left, what the phone is really sending on the right -----
         {
