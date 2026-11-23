@@ -377,7 +377,7 @@ static void ChipAt(ImDrawList* dl, float xr, float cy, const char* t, const ImVe
     dl->AddCircleFilled(ImVec2(x + px + r, cy), r, Cu(dot), 16);
     DText(dl, f_label, ImVec2(x + px + r * 2.0f + 8.0f * sc, y + (h - ts.y) * 0.5f), Cu(fg), t);
 }
-static float ChipWidth(const char* t) { return 12.0f * g_sc * 2 + 9.0f * g_sc + 8.0f * g_sc + TSize(f_label, t).x; }
+static float ChipWidth(const char* t) { return 42.0f * g_sc + TSize(f_label, t).x; }
 // label on the left, value on the right
 static void KV(const char* k, const char* v) {
     ImVec2 vs = TSize(f_body, v);
@@ -410,6 +410,22 @@ static void ThemeGlyph(ImDrawList* dl, ImVec2 c, bool toLight, ImU32 col, ImU32 
         dl->AddCircleFilled(c, 7.5f * sc, col, 24);
         dl->AddCircleFilled(ImVec2(c.x + 4.0f * sc, c.y - 3.5f * sc), 6.5f * sc, bg, 24);
     }
+}
+
+// stage glyphs (line icons): a phone, and a video camera with a slash (preview off)
+static void GlyphPhone(ImDrawList* dl, ImVec2 c, float sz, ImU32 col) {
+    float w = sz * 0.52f, h = sz, t = std::max(2.0f, sz * 0.06f);
+    dl->AddRect(ImVec2(c.x - w * 0.5f, c.y - h * 0.5f), ImVec2(c.x + w * 0.5f, c.y + h * 0.5f), col, w * 0.18f, 0, t);
+    dl->AddLine(ImVec2(c.x - w * 0.16f, c.y + h * 0.36f), ImVec2(c.x + w * 0.16f, c.y + h * 0.36f), col, t);
+    dl->AddLine(ImVec2(c.x - w * 0.12f, c.y - h * 0.38f), ImVec2(c.x + w * 0.12f, c.y - h * 0.38f), col, t);
+}
+static void GlyphCamOff(ImDrawList* dl, ImVec2 c, float sz, ImU32 col) {
+    float t = std::max(2.0f, sz * 0.06f), bw = sz * 0.66f, bh = sz * 0.5f;
+    float x0 = c.x - sz * 0.5f, y0 = c.y - bh * 0.5f;
+    dl->AddRect(ImVec2(x0, y0), ImVec2(x0 + bw, y0 + bh), col, sz * 0.1f, 0, t);
+    ImVec2 tri[4] = { ImVec2(x0 + bw + sz * 0.04f, c.y - sz * 0.07f), ImVec2(c.x + sz * 0.5f, c.y - bh * 0.4f), ImVec2(c.x + sz * 0.5f, c.y + bh * 0.4f), ImVec2(x0 + bw + sz * 0.04f, c.y + sz * 0.07f) };
+    dl->AddPolyline(tri, 4, col, ImDrawFlags_Closed, t);
+    dl->AddLine(ImVec2(c.x - sz * 0.5f, c.y - sz * 0.42f), ImVec2(c.x + sz * 0.5f, c.y + sz * 0.42f), col, t * 1.4f);
 }
 
 template <class F> static auto imrender(F f, ImDrawData* d, SDL_Renderer* r, int) -> decltype(f(d, r), void()) { f(d, r); }
@@ -486,11 +502,9 @@ static void gui_loop() {
         if (cw < mw || ch < mh) SDL_SetWindowSize(win, std::max(cw, mw), std::max(ch, mh));
     };
     set_min(sc);
-    // same icon as the phone app: window / taskbar icon and the logo in the header
+    // same icon as the phone app: window title bar / taskbar icon only
     SDL_Surface* isf = SDL_CreateRGBSurfaceWithFormatFrom((void*)g_icon_rgba, 64, 64, 32, 64 * 4, SDL_PIXELFORMAT_RGBA32);
     if (isf) { SDL_SetWindowIcon(win, isf); SDL_FreeSurface(isf); }
-    SDL_Texture* iconTex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, 64, 64);
-    if (iconTex) { SDL_UpdateTexture(iconTex, nullptr, g_icon_rgba, 64 * 4); SDL_SetTextureBlendMode(iconTex, SDL_BLENDMODE_BLEND); }
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -552,7 +566,7 @@ static void gui_loop() {
         int ww = 0, wh = 0;
         SDL_GetRendererOutputSize(ren, &ww, &wh);
         float panelW = 380 * sc; if (panelW > ww * 0.5f) panelW = ww * 0.5f;
-        const float mg = 12 * sc, pad = 8 * sc, barH = 56 * sc, statH = 32 * sc;
+        const float mg = 12 * sc, pad = 8 * sc, barH = 52 * sc, statH = 32 * sc;
         const float sx0 = mg, sy0 = barH, sx1 = (float)ww - panelW, sy1 = (float)wh - statH;
         bool live = have_frame && (now_us() - g_prev_us.load()) < 1500000;
 
@@ -612,7 +626,12 @@ static void gui_loop() {
             float isz = 72 * sc, gap = 14 * sc;
             float total = isz + gap + t1.y + 6 * sc + t2.y;
             float cx = (sx0 + sx1) * 0.5f, y = (sy0 + sy1) * 0.5f - total * 0.5f;
-            if (iconTex) bg->AddImage((ImTextureID)iconTex, ImVec2(cx - isz * 0.5f, y), ImVec2(cx + isz * 0.5f, y + isz));
+            {
+                ImVec4 gc = g_pal.onVar;
+                if (!live && kind == 3) gc = g_pal.err; else if (!live && kind == 2) gc = g_pal.warn; else if (live) gc = g_pal.ok;
+                if (live) GlyphCamOff(bg, ImVec2(cx, y + isz * 0.5f), isz * 0.9f, Cu(gc));
+                else GlyphPhone(bg, ImVec2(cx, y + isz * 0.5f), isz * 0.9f, Cu(gc));
+            }
             y += isz + gap;
             DText(bg, f_head, ImVec2(cx - t1.x * 0.5f, y), Cu(g_pal.onSurf), ttl.c_str(), bw);
             y += t1.y + 6 * sc;
@@ -633,10 +652,7 @@ static void gui_loop() {
                                            ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
             ImGui::PopStyleVar();
             ImDrawList* dl = ImGui::GetWindowDrawList();
-            float cy = barH * 0.5f, lx = 16 * sc, isz = 32 * sc;
-            if (iconTex) dl->AddImage((ImTextureID)iconTex, ImVec2(lx, cy - isz * 0.5f), ImVec2(lx + isz, cy + isz * 0.5f));
-            ImVec2 nt = TSize(f_head, "UsbCam");
-            DText(dl, f_head, ImVec2(lx + isz + 10 * sc, cy - nt.y * 0.5f), Cu(g_pal.onSurf), "UsbCam");
+            float cy = barH * 0.5f, lx = 16 * sc;
 
             // round tonal buttons on the right: text smaller, text larger, theme
             const float bs = 40 * sc;
@@ -670,10 +686,10 @@ static void gui_loop() {
             else if (kind == 2) { cbg = g_pal.warnC; cfg = g_pal.onWarnC; cdot = g_pal.warn; }
             else if (kind == 3) { cbg = g_pal.errC; cfg = g_pal.onErrC; cdot = g_pal.err; }
             float cw = ChipWidth(title.c_str());
-            float room = bmi.x - 12 * sc - (lx + isz + 10 * sc + nt.x + 16 * sc);
+            float room = bmi.x - 12 * sc - lx;
             std::string ct = title;
             if (cw > room && ct.size() > 14) ct = ct.substr(0, 12) + "...";
-            ChipAt(dl, bmi.x - 12 * sc, cy, ct.c_str(), cbg, cfg, cdot);
+            ChipAt(dl, lx + ChipWidth(ct.c_str()), cy, ct.c_str(), cbg, cfg, cdot);
             ImGui::End();
         }
 
@@ -830,7 +846,6 @@ static void gui_loop() {
     ImGui_ImplSDL2_Shutdown();
     ImGui::DestroyContext();
     if (tex) SDL_DestroyTexture(tex);
-    if (iconTex) SDL_DestroyTexture(iconTex);
     av_frame_free(&show);
     SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); SDL_Quit();
 }
