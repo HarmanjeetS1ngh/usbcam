@@ -21,7 +21,8 @@ target_link_libraries(usbcam_vcam PRIVATE avcodec avutil ws2_32 mfplat mf mfuuid
 
 # 3) the UsbCam app: window with live preview + controls + the virtual camera in one program (needs SDL2 and Dear ImGui)
 if(IMGUI_DIR AND SDL2_DIR)
-  add_executable(UsbCam WIN32 usbcam_vcam.cpp usbcam_gui.inc
+  enable_language(RC)
+  add_executable(UsbCam WIN32 usbcam_vcam.cpp usbcam_gui.inc usbcam_icon.h usbcam.rc
     ${IMGUI_DIR}/imgui.cpp ${IMGUI_DIR}/imgui_draw.cpp ${IMGUI_DIR}/imgui_tables.cpp ${IMGUI_DIR}/imgui_widgets.cpp
     ${IMGUI_DIR}/backends/imgui_impl_sdl2.cpp ${IMGUI_DIR}/backends/imgui_impl_sdlrenderer2.cpp)
   target_compile_definitions(UsbCam PRIVATE UCV_GUI _CRT_SECURE_NO_WARNINGS NOMINMAX)
